@@ -1,5 +1,7 @@
 {
-  "n_samples": 15000,
+  "n_samples_total": 30000,
+  "n_synthetic": 30000,
+  "n_external": 0,
   "seed": 42,
   "n_families": 200,
   "feature_dim": 428,
@@ -9,8 +11,24 @@
     "Caco2_permeability",
     "BBB_penetration",
     "Ames_mutagenicity",
-    "hERG_inhibition"
+    "hERG_inhibition",
+    "toxicity_binary",
+    "toxicity_type",
+    "neurotoxicity_type",
+    "HC50"
   ],
-  "label_model": "latent physicochemical linear scores + Gaussian noise; labels = score > 0",
-  "data_origin": "synthetic_demo (NOT experimental data)"
+  "endpoint_kinds": {
+    "GI_absorption": "binary",
+    "Caco2_permeability": "binary",
+    "BBB_penetration": "binary",
+    "Ames_mutagenicity": "binary",
+    "hERG_inhibition": "binary",
+    "toxicity_binary": "binary",
+    "toxicity_type": "multiclass",
+    "neurotoxicity_type": "multiclass",
+    "HC50": "regression"
+  },
+  "label_model": "latent physicochemical scores; binary = score>0; multiclass = argmax of class latent scores (toxicity_type: 0 = non-toxic); regression = latent HC50. neurotoxicity_type & HC50 are PARTIAL (NaN = unlabelled).",
+  "data_origin": "synthetic_demo (NOT experimental data); external rows keep their own origin",
+  "partial_labels": "NaN cell = endpoint not measured for that row (pepADMET convention)"
 }

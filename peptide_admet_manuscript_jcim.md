@@ -4,6 +4,20 @@
 
 **Article Type:** Article (Full-Length Research Manuscript)
 
+> **⚠️ v3.0 repository note (2026-08-25).** This manuscript describes the
+> **v2.0, five-endpoint** configuration (144,133-param MLP, macro AUC 0.8684).
+> The released repository has since been extended to **v3.0**: a 145,681-param
+> **mixed multi-task** model covering **nine endpoints** (the five above plus
+> pepADMET's `toxicity_binary`, `toxicity_type` [6-class],
+> `neurotoxicity_type` [4-class], and `HC50` [regression]), with
+> **partial-label masking** and an **extensible training set** (`prepare_data.py
+> --n <any>` + `ingest_external.py --merge`). On a 30,000-row training set the
+> homology-controlled mean primary metric is **0.7189** (per-endpoint values in
+> `README.md` and `PREDICTOR_SUMMARY.md`). The evaluation protocol
+> (homology-controlled split + leakage audit + dual-split reporting) is
+> unchanged. **This manuscript must be updated to the v3.0 endpoint set and
+> 30k metrics before any (re-)submission; the figures below reflect v2.0.**
+
 **Version:** 2.0 (integrity revision, 2026-08-24). This revision replaces the v1.0 manuscript's
 reported metrics (97.70% accuracy / 0.9987 AUC), which traced to hardcoded values and a
 homology-uncontrolled split on a dataset that was never actually shipped with the

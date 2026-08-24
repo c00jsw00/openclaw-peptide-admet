@@ -1,39 +1,54 @@
 # Peptide ADMET Prediction Model
 
-**Honest, reproducible PyTorch MLP for peptide ADMET property prediction — with an AMPBench-MT-style homology-controlled evaluation**
+**Honest, reproducible PyTorch *mixed multi-task* model for peptide ADMET prediction — 9 endpoints (6 binary + 2 multiclass + 1 regression), an extensible training set, and an AMPBench-MT-style homology-controlled evaluation**
 
 ![Status](https://img.shields.io/badge/status-demo_pipeline-orange)
-![Data](https://img.shields.io/badge/data-synthetic_demo-blue)
+![Data](https://img.shields.io/badge/data-synthetic_demo_%2B_external-blue)
+![Endpoints](https://img.shields.io/badge/endpoints-9--mixed-green)
 ![Eval](https://img.shields.io/badge/eval--split-homology--controlled-green)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-> **2026-08 revision (integrity update).** The earlier version of this
-> repository advertised *97.70% accuracy / 0.9987 AUC* measured on a
-> "15,000 real peptide" dataset that was not present in the repository, and
-> saved a second Random Forest as the "neural network". Those claims are
-> removed. The revised repository is a **fully reproducible demonstration
-> pipeline** on a clearly-labelled synthetic demo dataset, evaluated on a
-> **homology-controlled** test split in the spirit of AMPBench-MT
-> (arXiv:2607.25518), which shows that sequence-similarity leakage is the
-> main reason naive ADMET/AMP benchmarks overstate generalization.
+> **2026-08 v3.0 (extensibility + endpoint expansion).** Builds on the
+> v2.0 integrity revision. This release adds:
+> 1. **pepADMET's four toxicity endpoints** — `toxicity_binary` (binary),
+>    `toxicity_type` (6-class), `neurotoxicity_type` (4-class), and
+>    `HC50` (regression) — so the model now predicts **9 endpoints** in a
+>    single forward pass (6 binary + 2 multiclass + 1 regression).
+> 2. **pepADMET's partial-label mechanism** — a `NaN` cell means "this
+>    endpoint is not measured for this row"; the trainer *masks* it out of the
+>    loss and the predictor reports `None`, exactly as pepADMET does.
+> 3. **A scalable, extensible training set** — `prepare_data.py --n <N>`
+>    generates any size, and `--merge <csv>` folds in an **external** dataset
+>    (validated, deduped, provenance-stamped, partial labels preserved) via
+>    `ingest_external.py`. Real measured data can therefore be added without
+>    touching the pipeline.
 
 ---
 
 ## 📊 Overview
 
-A single **PyTorch MLP (428 → 256 → 128 → 5)** with one sigmoid head per
-endpoint predicts five ADMET properties in peptides:
+A single **PyTorch shared-trunk MLP (428 → 256 → 128)** with **per-task heads**
+predicts **nine** peptide properties:
 
-1. **GI Absorption** (Gastrointestinal absorption)
-2. **Caco-2 Permeability** (Intestinal cell permeability)
-3. **BBB Penetration** (Blood-brain barrier penetration)
-4. **Ames Mutagenicity** (Mutagenicity risk)
-5. **hERG Inhibition** (Cardiotoxicity risk)
+| # | Endpoint | Type | Meaning |
+|---|----------|------|---------|
+| 1 | `GI_absorption` | binary | Oral GI absorption |
+| 2 | `Caco2_permeability` | binary | Caco-2 cell-line permeability |
+| 3 | `BBB_penetration` | binary | Blood-brain barrier penetration |
+| 4 | `Ames_mutagenicity` | binary | Ames mutagenicity risk |
+| 5 | `hERG_inhibition` | binary | hERG channel (cardiotoxicity) risk |
+| 6 | `toxicity_binary` | binary | Overall cytotoxicity |
+| 7 | `toxicity_type` | multiclass (6) | Toxicity mechanism (0 = non-toxic) |
+| 8 | `neurotoxicity_type` | multiclass (4) | Neurotoxicity subtype |
+| 9 | `HC50` | regression | Half-maximal cytotoxicity (~log scale; lower = more potent) |
+
+Endpoints 1–5 are the original ADME/safety set; **6–9 are pepADMET's toxicity
+endpoints** (Tan et al., 中南大學; `ifyoungnet/pepADMET`), added in v3.0.
 
 In addition, the predictor reports a **composite multi-objective score** —
-the geometric mean of the *favourable* probability of each endpoint —
-following the multi-objective candidate ranking used by generative AMP
-design frameworks such as AMPGAN v3 / PepCraft (arXiv, 2026-06).
+the geometric mean of each composite endpoint's *favourability* in [0,1] —
+following the multi-objective candidate ranking used by AMPGAN v3 / PepCraft
+(arXiv:2606.17127).
 
 ### Key Features
 
@@ -54,39 +69,50 @@ design frameworks such as AMPGAN v3 / PepCraft (arXiv, 2026-06).
 
 ## 🎯 Performance (measured, this run)
 
-Measured on the **homology-controlled test split** (3,020 sequences;
-training data is the synthetic demo set):
+Measured on the **homology-controlled test split** (5,992 sequences; 30,000-row
+training set, 20,996 train / 3,012 val). The "primary metric" per endpoint is
+AUC (binary), macro-F1 (multiclass), or R² (regression).
 
 | Metric | Value |
 |--------|-------|
-| **Macro AUC-ROC (headline)** | **0.8684** |
-| **Mean accuracy** | **0.7836** |
-| Random-split macro AUC (comparison) | 0.8688 |
-| Homology-vs-random AUC delta | +0.0004 |
+| **Mean primary metric (headline)** | **0.7189** |
+| Random-split mean metric (comparison) | 0.7227 |
+| Homology-vs-random delta | +0.0038 |
+| Model params | 145,681 |
 
-### Per-Endpoint (homology-controlled test split)
+### Per-Endpoint (homology-controlled test split, 30k run)
 
-| Endpoint | AUC | MCC | Accuracy | Positive rate |
-|----------|-----|-----|----------|---------------|
-| GI Absorption | 0.8810 | 0.4457 | 0.8037 | 0.132 |
-| Caco-2 Permeability | 0.8882 | 0.5930 | 0.8094 | 0.319 |
-| BBB Penetration | 0.9070 | 0.4575 | 0.8367 | 0.105 |
-| Ames Mutagenicity | 0.8011 | 0.3418 | 0.7016 | 0.171 |
-| hERG Inhibition | 0.8645 | 0.5261 | 0.7665 | 0.299 |
+| Endpoint | Type | Primary metric | Other | n labelled |
+|----------|------|---------------|-------|-----------|
+| GI Absorption | binary | **AUC 0.8864** | MCC 0.4580, Acc 0.8141 | 5,992 |
+| Caco-2 Permeability | binary | **AUC 0.9105** | MCC 0.6257, Acc 0.8258 | 5,992 |
+| BBB Penetration | binary | **AUC 0.9368** | MCC 0.5433, Acc 0.8652 | 5,992 |
+| Ames Mutagenicity | binary | **AUC 0.8415** | MCC 0.4420, Acc 0.7710 | 5,992 |
+| hERG Inhibition | binary | **AUC 0.8723** | MCC 0.5194, Acc 0.7714 | 5,992 |
+| toxicity_binary | binary | **AUC 0.8392** | MCC 0.4856, Acc 0.7537 | 5,992 |
+| toxicity_type | multiclass (6) | **macro-F1 0.2208** | Acc 0.7034 | 5,992 |
+| neurotoxicity_type | multiclass (4) | **macro-F1 0.3525** | Acc 0.3847 | 1,297 (partial) |
+| HC50 | regression | **R² 0.6100** | RMSE 0.3386, MAE 0.2680 | 3,589 (partial) |
 
 > ⚠️ **These numbers characterize the demo pipeline, not real-peptide
-> performance.** The labels are drawn from a latent physicochemical model,
-> so ~0.8–0.9 AUC is exactly what should be expected. On *experimental*
-> peptide data, real ADMET predictors (AdmetSAR, SwissADME, ADMETlab)
-> typically report per-endpoint AUCs in a comparable or lower range — the
-> old 0.9987 figure was a leakage artifact, not a property of the model.
+> performance.** The core labels are drawn from a latent physicochemical model,
+> so the binary AUCs (~0.84–0.94) and the partial-label endpoints are exactly
+> what the *pipeline* is designed to produce. The multiclass macro-F1s are low
+> because the class distributions are imbalanced (class 0 dominates
+> `toxicity_type`) — an honest consequence of the latent model, not a bug.
 
-The random-split comparison (macro AUC 0.8688) exists to quantify the
-"memorization" gap that AMPBench-MT (arXiv:2607.25518) documents: when
-training and test sequences are drawn from the same composition families,
-apparent performance inflates. Here the gap is small because the demo
-labels are driven by physicochemistry, but the *protocol* is what matters
-for real data.
+**Effect of training-set size (this release's other goal).** Regenerating at
+15,000 rows (same seed, same protocol) gives a mean primary metric of **0.6929**
+and HC50 R² **0.4610**; scaling to 30,000 rows lifts them to **0.7189** and
+**0.6100** respectively. The improvement is small and expected for a
+physicochemistry-driven demo, but it demonstrates that the training set is
+genuinely *scalable* — and that real data folded in via `--merge` will move
+these numbers in the same direction.
+
+The random-split comparison (0.7227) exists to quantify the "memorization" gap
+that AMPBench-MT (arXiv:2607.25518) documents. Here the gap is small (+0.0038)
+because the demo labels are driven by physicochemistry, but the *protocol* is
+what matters for real data.
 
 ---
 
@@ -107,9 +133,24 @@ pip install -r requirements.txt
 ### Run the full pipeline (reproduces every number above)
 
 ```bash
-python prepare_data.py                # 15,000 synthetic_demo rows, seed 42
-python homology_split.py              # family-disjoint 70/10/20 split
-python train_peptide_admet_model.py   # trains MLP, writes metrics.json
+python prepare_data.py --n 30000       # 30,000 synthetic_demo rows, seed 42 (any --n)
+python homology_split.py               # family-disjoint 70/10/20 split + leakage audit
+python train_peptide_admet_model.py    # trains mixed MLP, writes metrics.json
+```
+
+### Add an external / real dataset (the "bigger training set" path)
+
+```bash
+# 1) ingest an external CSV: validate, dedup, stamp provenance, keep partial labels
+python ingest_external.py --input real_data.csv --source ampdb_real --output data/real.csv
+#    (for pepADMET-style SMILES files, pass --smiles to attempt sequence recovery)
+
+# 2) fold it into the training set (external rows keep their own data_origin)
+python prepare_data.py --n 30000 --merge data/real.csv --out data/train.csv
+
+# 3) split + train on the combined set
+python homology_split.py
+python train_peptide_admet_model.py --csv data/train.csv
 ```
 
 ### Using the Predictor
@@ -117,21 +158,18 @@ python train_peptide_admet_model.py   # trains MLP, writes metrics.json
 #### Python API
 
 ```python
-from peptide_admet_predictor import PeptideADMETPredictor
+from peptide_admet_predictor import PeptideAdmetPredictor
 
-predictor = PeptideADMETPredictor(model_dir='peptide_admet_model')
-
-results = predictor.predict("WALVKALVNHRISSSLVCG")   # single sequence
-predictor.print_result(results)
-
-results = predictor.predict(["GAGAGAGAGAGA", "KKKKKKKKKK"])   # batch
-ranked = predictor.rank_candidates(["GAGAGAGAGAGA", "KKKKKKKKKK"])  # composite score
+predictor = PeptideAdmetPredictor(model_dir='peptide_admet_model')
+out = predictor.predict("WALVKALVNHRISSSLVCG")   # 9 endpoints + composite score
+print(out['composite_score'])
+print(out['results'])     # per-endpoint: kind, probability/class/value, risk level
 ```
 
 #### Command Line
 
 ```bash
-# Single sequence
+# Single sequence (prints all 9 endpoints + composite score)
 python peptide_admet_predictor.py --sequence "WALVKALVNHRISSSLVCG"
 
 # Batch + multi-objective ranking
@@ -159,24 +197,28 @@ GRAVY, hydrophobic residue ratio, charged residue ratio.
 
 ## 🔬 Model Architecture
 
-A single shared MLP with one classification head per endpoint
-(defined in `admet_model.py`, used by both trainer and predictor so the
-architecture and checkpoint format can never drift apart):
+A **shared trunk** with **per-task heads** (defined in `admet_model.py`, used
+by both trainer and predictor so the architecture and checkpoint format can
+never drift apart). The v2.0 `ADMETMLP` (5 binary heads) is kept for loading
+old checkpoints; v3.0 uses `MixedADMETMLP`.
 
-- Input: 428 standardized features
-- Hidden layers: 256 → 128 (ReLU + BatchNorm + Dropout 0.2)
-- Output: 5 sigmoid heads (one per endpoint)
-- Loss: mean per-endpoint BCE (class weights from endpoint prevalence)
-- Optimizer: Adam (lr=3e-4), ReduceLROnPlateau, early stopping on val BCE
+- **Trunk:** 428 standardized features → 256 → 128 (ReLU + BatchNorm + Dropout 0.25)
+- **Heads (per endpoint kind):**
+  - binary (6): one `Linear(128,1)` → sigmoid
+  - multiclass: `Linear(128, C)` where C = 6 (`toxicity_type`) or 4 (`neurotoxicity_type`) → softmax
+  - regression (1): `Linear(128,1)` → raw value
+- **Loss:** sum over the nine endpoints, each reduced **only over its labelled
+  rows** (mask-aware). Binary uses `pos_weight` from endpoint prevalence;
+  multiclass uses cross-entropy; regression uses MSE.
+- **Optimizer:** Adam (lr=1e-3), ReduceLROnPlateau, early stopping on val mixed loss.
 
 Saved artifacts in `peptide_admet_model/`:
 
 ```
 peptide_admet_model/
-├── admet_mlp.pt          # PyTorch state dict + architecture metadata
+├── admet_mlp.pt          # MixedADMETMLP state dict + endpoint/kind metadata
 ├── scaler.pt             # StandardScaler (torch.save)
-├── metrics.json          # MEASURED per-endpoint AUC/MCC/Acc, both splits
-└── feature_names.txt     # 428 feature names (AAC_*, DPC_*, physchem)
+└── metrics.json          # MEASURED per-endpoint metrics (both splits) + provenance
 ```
 
 ---
@@ -185,32 +227,58 @@ peptide_admet_model/
 
 ### Data: `prepare_data.py`
 
-15,000 synthetic peptide sequences (length 10–30) drawn from 200
+`--n` synthetic peptide sequences (length 10–30) drawn from 200
 amino-acid-composition families (Dirichlet profiles). Labels come from a
-deliberately crude latent model (length, hydropathy, net charge,
-aromaticity + noise) so that honest, measurable AUCs emerge. Every row is
+deliberately crude latent model (length, hydropathy, net charge, aromaticity +
+noise) so that honest, measurable metrics emerge. Every synthetic row is
 stamped `data_origin=synthetic_demo`.
 
-**Why synthetic?** The original repository claimed a 15,000-row *real*
+**Partial labels (pepADMET convention).** `toxicity_type` is fully labelled
+(class 0 = non-toxic, consistent with `toxicity_binary`); `neurotoxicity_type`
+and `HC50` are present only for a random subset of rows. A `NaN` cell = "not
+measured for this row" and is masked out of training — the same sparsity
+pepADMET ships, so the masking code path is genuinely exercised.
+
+**Extensibility.** `--merge <csv>` folds in an external dataset produced by
+`ingest_external.py`. External rows keep their own `data_origin` and their own
+partial labels (they are **not** relabelled by the synthetic model), and the
+combined set is deduped by sequence. This is the intended path for adding
+*real measured* data.
+
+**Why synthetic core?** The original repository claimed a 15,000-row *real*
 dataset but shipped no data file, so no model could be trained or verified.
-Rather than fabricate experimental values, the pipeline now ships a
-regenerable, explicitly-labelled demo set. Swapping in real data requires
-only producing a CSV with the same columns (`sequence, family_id,
-data_origin, GI_absorption, Caco2_permeability, BBB_penetration,
-Ames_mutagenicity, hERG_inhibition`).
+Rather than fabricate experimental values, the pipeline ships a regenerable,
+explicitly-labelled demo set. A real dataset is a CSV with the columns
+`sequence, family_id, data_origin` + the 9 endpoint columns (`NaN` = unlabelled).
+
+### Ingesting external data: `ingest_external.py`
+
+Validates an external CSV against the 9-endpoint schema, normalises sequences
+(uppercase, standard AA only, length 4–120), de-duplicates, stamps
+`data_origin` and `sequence_provenance`, and preserves partial labels. For
+SMILES-only inputs (e.g. pepADMET's `Toxicity.csv`) it can attempt
+SMILES→sequence recovery via RDKit (`smiles_to_sequence.py`) and flags the
+result as `smiles_inferred` (low-trust) — see the note below.
 
 ### Split: `homology_split.py`
 
-Sequences are grouped into **families by amino-acid composition** (the
-feature space the model actually sees). Families are then assigned to
-train/val/test (70/10/20) so that no composition family appears on both
-sides of a boundary. The script verifies and reports the maximum pairwise
-Jaccard overlap between train and test/test composition profiles
-(0.25 in this run; threshold 0.5) and the per-endpoint label-rate delta
-between splits (≤ 0.013), so leakage is *measured*, not assumed. This
-follows the homology/leakage-control protocol of AMPBench-MT
-(arXiv:2607.25518) and is the standard fix for the "sequence-similarity
-memorization" failure mode documented across 2026 AMP benchmarks.
+Sequences are grouped into **families by amino-acid composition** (the feature
+space the model actually sees). Families are assigned to train/val/test
+(70/10/20) so no composition family appears on both sides of a boundary. The
+script verifies and reports the max pairwise Jaccard overlap between train and
+test (≤ 0.31 in the 30k run; threshold 0.5) and the per-endpoint label-rate
+delta (≤ 0.017), so leakage is *measured*, not assumed. This follows the
+homology/leakage-control protocol of AMPBench-MT (arXiv:2607.25518).
+
+> **Honest note on SMILES→sequence.** pepADMET's shipped `Toxicity.csv`
+> contains SMILES but **no explicit sequence column**, and its own
+> composition reference columns are internally inconsistent with the SMILES
+> (composition sums to ~100 vs ~10-residue structures). We therefore do **not**
+> treat those 135 rows as clean real data. `ingest_external.py` recovers a
+> sequence for the subset of SMILES that parse cleanly and marks them
+> `sequence_provenance=smiles_inferred`; in our test only ~14/135 survived
+> length/composition sanity checks. The pipeline is *capable* of ingesting
+> real peptide sequences, but pepADMET's sample file is not a reliable source.
 
 ---
 
@@ -218,15 +286,18 @@ memorization" failure mode documented across 2026 AMP benchmarks.
 
 ```
 openclaw-peptide-admet/
-├── prepare_data.py             # regenerate the synthetic_demo dataset
+├── endpoint_config.py          # single source of truth for the 9 endpoints
+├── prepare_data.py             # generate any-size synthetic set (+ --merge external)
+├── ingest_external.py          # validate/dedup/provenance an external CSV
+├── smiles_to_sequence.py       # RDKit SMILES -> one-letter sequence (low-trust flag)
 ├── homology_split.py           # family-disjoint 70/10/20 split + leakage audit
-├── admet_model.py              # shared MLP definition (trainer + predictor)
-├── train_peptide_admet_model.py# training, dual-split evaluation, metrics.json
-├── peptide_admet_predictor.py  # inference CLI + composite multi-objective score
+├── admet_model.py              # MixedADMETMLP (+ legacy ADMETMLP) shared by train/predict
+├── train_peptide_admet_model.py# mask-aware mixed loss, dual-split metrics.json
+├── peptide_admet_predictor.py  # inference CLI, 9 endpoints + composite score
 ├── peptide_admet_model/        # trained artifacts (admet_mlp.pt, scaler.pt, metrics.json)
 ├── data/                       # generated CSV + metadata (regenerable; gitignored)
 ├── test_sequences.txt          # example candidate list for --rank
-├── peptide_admet_manuscript_jcim.md   # manuscript (updated to measured metrics)
+├── peptide_admet_manuscript_jcim.md   # manuscript
 ├── cover_letter_jcim.md
 ├── SUBMISSION_CHECKLIST.md
 ├── README.md                   # this file
@@ -237,23 +308,26 @@ openclaw-peptide-admet/
 
 ## 🧪 Usage Examples
 
-### Example 1: Single Sequence Prediction
+### Example 1: Single Sequence Prediction (all 9 endpoints)
 
 ```python
-from peptide_admet_predictor import PeptideADMETPredictor
+from peptide_admet_predictor import PeptideAdmetPredictor
 
-predictor = PeptideADMETPredictor(model_dir='peptide_admet_model')
-results = predictor.predict("WALVKALVNHRISSSLVCG")
-predictor.print_result(results)
+predictor = PeptideAdmetPredictor(model_dir='peptide_admet_model')
+out = predictor.predict("WALVKALVNHRISSSLVCG")
+# out['composite_score']  : multi-objective score in [0,1]
+# out['results']          : per-endpoint (kind, probability/class/value, risk)
+# out['endpoints']        : {endpoint: value} for quick access
 ```
 
-### Example 2: Multi-objective Candidate Ranking
+### Example 2: Multi-objective Candidate Ranking (CLI)
 
-```python
-candidates = ["GAGAGAGAGAGA", "MLLLLLLLLL", "KKKKKKKKKK", "ACDE"]
-ranked = predictor.rank_candidates(candidates)
-# ranked[0] = best composite score (geometric mean of favourable
-# endpoint probabilities: GI+, Caco2+, BBB+, Ames-low, hERG-low)
+```bash
+# one sequence per line in candidates.txt
+python peptide_admet_predictor.py --sequences candidates.txt --rank
+# rows sorted by composite score (geometric mean of favourability across
+# the composite endpoints: GI+, Caco2+, BBB+, Ames-low, hERG-low,
+# toxicity-low, toxType-class0, neurotox-class0, HC50-high)
 ```
 
 ### Example 3: Model Provenance (no hardcoded numbers)
@@ -261,8 +335,17 @@ ranked = predictor.rank_candidates(candidates)
 ```python
 info = predictor.model_info()
 # {'eval_split': 'homology-controlled ...',
-#  'mean_auc_homology_split': 0.8684,
+#  'mean_metric_homology': 0.7189,
+#  'per_endpoint_homology': {...9 endpoints...},
 #  'trained_on': 'synthetic_demo', ...}
+```
+
+### Example 4: Fold in a real dataset
+
+```bash
+python ingest_external.py --input real.csv --source myrealdata --output data/real.csv
+python prepare_data.py --n 30000 --merge data/real.csv --out data/train.csv
+python homology_split.py && python train_peptide_admet_model.py --csv data/train.csv
 ```
 
 ---
@@ -285,32 +368,48 @@ recent antimicrobial-peptide literature (see
 - **Genotypic Triggers (2026-08)** — pharmacogenomic "back-door" safety
   blind spot; a reminder that ADMET panels without toxicogenomics
   endpoints are incomplete.
+- **pepADMET (Tan et al., 中南大學; `ifyoungnet/pepADMET`)** — a peptide
+  toxicity GNN with partial-label toxicity-type / neurotoxicity-type / HC50
+  endpoints. v3.0 adopts its **endpoint set** (6–9) and **partial-label
+  mechanism** into the openclaw pipeline, while keeping openclaw's
+  homology-controlled evaluation and reproducible data (both of which
+  pepADMET lacks — its training set is not shipped and its split has no
+  homology control).
 
 ---
 
 ## ⚠️ Limitations
 
-1. **Synthetic demo data.** The shipped model was trained on regenerated
-   synthetic data with a crude latent label model. All reported metrics
-   characterize the *pipeline*, not real-peptide ADMET behaviour.
-2. **5 endpoints only** (vs. 18+ in AdmetSAR 2.0 / ADMETlab 3.0). No
-   toxicogenomic / pharmacogenomic endpoints (see Genotypic Triggers,
-   2026-08).
+1. **Synthetic core data.** The shipped model was trained on regenerated
+   synthetic data (plus any `--merge`d external rows) with a crude latent
+   label model. All reported metrics characterize the *pipeline*, not
+   real-peptide ADMET behaviour.
+2. **9 endpoints** (vs. 18+ in AdmetSAR 2.0 / ADMETlab 3.0). Still no
+   CYP / DILI / pharmacogenomic endpoints (see Genotypic Triggers, 2026-08).
+   The 4 toxicity endpoints match pepADMET, not a full toxicogenomics panel.
 3. **Composition-level features.** AAC/DPC cannot capture sequence order
-   beyond dipeptides; a language-model or GNN backbone would be needed
-   for order-sensitive properties.
-4. **Sequence length.** Demo data spans 10–30 aa; performance outside
-   this range is unvalidated.
-5. **No experimental validation.** No wet-lab data has been used.
+   beyond dipeptides; a language-model or GNN backbone (as pepADMET uses)
+   would be needed for order-sensitive properties.
+4. **Multiclass imbalance.** `toxicity_type` is dominated by class 0
+   (non-toxic), so its macro-F1 is low — an honest consequence of the latent
+   model, not a bug. Real balanced toxicity data would change this.
+5. **SMILES→sequence is low-trust.** pepADMET's sample `Toxicity.csv` is not
+   a reliable real-data source (inconsistent reference columns, no sequence
+   column); only a small clean subset survives recovery.
+6. **Sequence length.** Demo data spans 10–30 aa; performance outside this
+   range is unvalidated.
+7. **No experimental validation.** No wet-lab data has been used.
 
 ---
 
 ## 🎯 Future Directions
 
-1. **Real data integration** — retrain on experimental ADMET/AMP data
-   (AMPBench-MT tasks, AMPDB-derived sets) with the same split protocol.
+1. **Real data integration** — fold in experimental ADMET/AMP data
+   (AMPBench-MT tasks, AMPDB-derived sets) via `ingest_external.py --merge`
+   with the same split protocol.
 2. **Sequence-order features** — pre-trained peptide language models
-   (ESM-2, ProtGPT2 soft prompts) as the feature backbone.
+   (ESM-2, ProtGPT2 soft prompts) or a GNN backbone (as in pepADMET) as the
+   feature backbone, while retaining the homology-controlled evaluation.
 3. **Generative loop** — couple the predictor with a generator
    (AMPGAN v3-style) for score-based candidate design, including
    non-canonical amino acids and end-group modifications.
@@ -328,16 +427,17 @@ If you use this pipeline in your research, please cite:
 ```bibtex
 @software{peptide_admet_2026,
   author = {OpenClaw Team},
-  title  = {Peptide ADMET Prediction: a reproducible demo pipeline with
-            homology-controlled evaluation},
+  title  = {Peptide ADMET Prediction: a reproducible mixed multi-task
+            pipeline with homology-controlled evaluation},
   year   = {2026},
   url    = {https://github.com/c00jsw00/openclaw-peptide-admet},
-  note   = {Revised 2026-08: synthetic_demo data, AMPBench-MT-style split}
+  note   = {v3.0: 9 endpoints (incl. pepADMET toxicity set), partial-label
+            masking, extensible training set, AMPBench-MT-style split}
 }
 ```
 
 ---
 
-**Version**: 2.0 (integrity revision)
-**Last Updated**: 2026-08-24
+**Version**: 3.0 (extensibility + pepADMET endpoint expansion)
+**Last Updated**: 2026-08-25
 **Author**: OpenClaw Team
