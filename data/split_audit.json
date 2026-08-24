@@ -1,0 +1,19 @@
+{
+  "csv": "data/peptide_admet_demo.csv",
+  "threshold": 0.5,
+  "fractions": {
+    "train": 0.7,
+    "val": 0.1,
+    "test": 0.2
+  },
+  "seed": 42,
+  "n_families": 14481,
+  "counts": {
+    "train": 10490,
+    "val": 1504,
+    "test": 3006
+  },
+  "max_train_test_kmer_jaccard_audited": 0.25,
+  "max_endpoint_rate_gap": 0.0135,
+  "method": "greedy single-linkage 3-mer Jaccard clustering, family-level split (AMPBench-MT-style homology control, arXiv:2607.25518)"
+}

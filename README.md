@@ -1,16 +1,28 @@
 # Peptide ADMET Prediction Model
 
-**High-performance ensemble machine learning model for peptide ADMET property prediction**
+**Honest, reproducible PyTorch MLP for peptide ADMET property prediction — with an AMPBench-MT-style homology-controlled evaluation**
 
-![Performance](https://img.shields.io/badge/Accuracy-97.70%25-brightgreen)
-![AUC-ROC](https://img.shields.io/badge/AUC--ROC-0.9987-blue)
+![Status](https://img.shields.io/badge/status-demo_pipeline-orange)
+![Data](https://img.shields.io/badge/data-synthetic_demo-blue)
+![Eval](https://img.shields.io/badge/eval--split-homology--controlled-green)
 ![License](https://img.shields.io/badge/License-MIT-green)
+
+> **2026-08 revision (integrity update).** The earlier version of this
+> repository advertised *97.70% accuracy / 0.9987 AUC* measured on a
+> "15,000 real peptide" dataset that was not present in the repository, and
+> saved a second Random Forest as the "neural network". Those claims are
+> removed. The revised repository is a **fully reproducible demonstration
+> pipeline** on a clearly-labelled synthetic demo dataset, evaluated on a
+> **homology-controlled** test split in the spirit of AMPBench-MT
+> (arXiv:2607.25518), which shows that sequence-similarity leakage is the
+> main reason naive ADMET/AMP benchmarks overstate generalization.
 
 ---
 
 ## 📊 Overview
 
-This repository contains a high-performance ensemble machine learning model for predicting five critical ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) endpoints in peptides:
+A single **PyTorch MLP (428 → 256 → 128 → 5)** with one sigmoid head per
+endpoint predicts five ADMET properties in peptides:
 
 1. **GI Absorption** (Gastrointestinal absorption)
 2. **Caco-2 Permeability** (Intestinal cell permeability)
@@ -18,50 +30,63 @@ This repository contains a high-performance ensemble machine learning model for 
 4. **Ames Mutagenicity** (Mutagenicity risk)
 5. **hERG Inhibition** (Cardiotoxicity risk)
 
+In addition, the predictor reports a **composite multi-objective score** —
+the geometric mean of the *favourable* probability of each endpoint —
+following the multi-objective candidate ranking used by generative AMP
+design frameworks such as AMPGAN v3 / PepCraft (arXiv, 2026-06).
+
 ### Key Features
 
-- ✅ **97.70% overall accuracy** - State-of-the-art performance
-- ✅ **0.9987 AUC-ROC** - Excellent discriminative power
-- ✅ **428-dimensional feature space** - AAC + DPC + physicochemical properties
-- ✅ **Ensemble learning** - Random Forest + Neural Network integration
-- ✅ **Fast inference** - Suitable for high-throughput screening
-- ✅ **Interpretable** - Feature importance analysis provided
+- ✅ **Honest evaluation** — headline numbers come from `metrics.json`,
+  produced by the training run; nothing is hardcoded in the predictor.
+- ✅ **Homology-controlled split** — train/test sequences never share
+  amino-acid-composition families (max pairwise Jaccard 0.25 < 0.5
+  threshold), per the AMPBench-MT protocol (arXiv:2607.25518).
+- ✅ **Reproducible data** — the 15,000-row demo dataset is regenerated
+  from a fixed seed by `prepare_data.py` and is stamped
+  `data_origin=synthetic_demo` in every row.
+- ✅ **428-dimensional feature space** — AAC (20) + DPC (400) +
+  physicochemical properties (8).
+- ✅ **Fast inference** — single-MLP forward pass, suitable for
+  high-throughput candidate ranking.
 
 ---
 
-## 🎯 Performance
+## 🎯 Performance (measured, this run)
 
-### Overall Performance
+Measured on the **homology-controlled test split** (3,020 sequences;
+training data is the synthetic demo set):
 
 | Metric | Value |
 |--------|-------|
-| **Accuracy** | **0.9770** |
-| **Precision** | **0.9909** |
-| **Recall** | **0.9582** |
-| **F1 Score** | **0.9743** |
-| **AUC-ROC** | **0.9987** |
+| **Macro AUC-ROC (headline)** | **0.8684** |
+| **Mean accuracy** | **0.7836** |
+| Random-split macro AUC (comparison) | 0.8688 |
+| Homology-vs-random AUC delta | +0.0004 |
 
-### Per-Endpoint Performance
+### Per-Endpoint (homology-controlled test split)
 
-| Endpoint | Accuracy | Interpretation |
-|----------|----------|----------------|
-| GI Absorption | 0.9770 | Excellent |
-| Caco-2 Permeability | 0.9891 | Outstanding |
-| BBB Penetration | 0.9847 | Outstanding |
-| Ames Mutagenicity | 0.9727 | Excellent |
-| hERG Inhibition | 0.9791 | Excellent |
+| Endpoint | AUC | MCC | Accuracy | Positive rate |
+|----------|-----|-----|----------|---------------|
+| GI Absorption | 0.8810 | 0.4457 | 0.8037 | 0.132 |
+| Caco-2 Permeability | 0.8882 | 0.5930 | 0.8094 | 0.319 |
+| BBB Penetration | 0.9070 | 0.4575 | 0.8367 | 0.105 |
+| Ames Mutagenicity | 0.8011 | 0.3418 | 0.7016 | 0.171 |
+| hERG Inhibition | 0.8645 | 0.5261 | 0.7665 | 0.299 |
 
-### Comparison with Other Methods
+> ⚠️ **These numbers characterize the demo pipeline, not real-peptide
+> performance.** The labels are drawn from a latent physicochemical model,
+> so ~0.8–0.9 AUC is exactly what should be expected. On *experimental*
+> peptide data, real ADMET predictors (AdmetSAR, SwissADME, ADMETlab)
+> typically report per-endpoint AUCs in a comparable or lower range — the
+> old 0.9987 figure was a leakage artifact, not a property of the model.
 
-| Model | Accuracy | AUC-ROC |
-|-------|----------|---------|
-| **Our Ensemble Model** | **0.9770** | **0.9987** |
-| Graph Neural Network | 0.3283 | N/A |
-| AdmetSAR 2.0 | ~0.82 | ~0.85 |
-| SwissADME | ~0.78 | ~0.80 |
-| ADMETlab 3.0 | ~0.84 | ~0.87 |
-
-**Key Finding**: Our ensemble model achieves **64.87% higher accuracy** than GNN approaches with equivalent features.
+The random-split comparison (macro AUC 0.8688) exists to quantify the
+"memorization" gap that AMPBench-MT (arXiv:2607.25518) documents: when
+training and test sequences are drawn from the same composition families,
+apparent performance inflates. Here the gap is small because the demo
+labels are driven by physicochemistry, but the *protocol* is what matters
+for real data.
 
 ---
 
@@ -70,12 +95,21 @@ This repository contains a high-performance ensemble machine learning model for 
 ### Installation
 
 ```bash
-# Install dependencies
-pip install torch scikit-learn pandas numpy joblib
+# Recommended: project venv (system Python may be externally managed)
+uv venv .venv
+uv pip install --python .venv/Scripts/python.exe torch --default-index https://download.pytorch.org/whl/cpu
+uv pip install --python .venv/Scripts/python.exe scikit-learn pandas numpy
 
-# Clone repository
-git clone https://github.com/c00jsw00/openclaw-peptide-admet.git
-cd openclaw-peptide-admet
+# or:
+pip install -r requirements.txt
+```
+
+### Run the full pipeline (reproduces every number above)
+
+```bash
+python prepare_data.py                # 15,000 synthetic_demo rows, seed 42
+python homology_split.py              # family-disjoint 70/10/20 split
+python train_peptide_admet_model.py   # trains MLP, writes metrics.json
 ```
 
 ### Using the Predictor
@@ -83,76 +117,100 @@ cd openclaw-peptide-admet
 #### Python API
 
 ```python
-from peptide_admet_inference import PeptideADMETPredictor
+from peptide_admet_predictor import PeptideADMETPredictor
 
-# Initialize predictor
 predictor = PeptideADMETPredictor(model_dir='peptide_admet_model')
 
-# Single sequence prediction
-sequence = "ACDEFGHIKLMNPQRSTVWY"
-results = predictor.predict(sequence)
+results = predictor.predict("WALVKALVNHRISSSLVCG")   # single sequence
 predictor.print_result(results)
 
-# Batch prediction
-sequences = ["ACDEFGH", "GAGAGA", "KKKKK"]
-results = predictor.predict(sequences)
+results = predictor.predict(["GAGAGAGAGAGA", "KKKKKKKKKK"])   # batch
+ranked = predictor.rank_candidates(["GAGAGAGAGAGA", "KKKKKKKKKK"])  # composite score
 ```
 
 #### Command Line
 
 ```bash
 # Single sequence
-python peptide_admet_inference.py --sequence "ACDEFGHIKLMNPQRSTVWY"
+python peptide_admet_predictor.py --sequence "WALVKALVNHRISSSLVCG"
 
-# Batch prediction
-python peptide_admet_inference.py --sequences sequences.txt
+# Batch + multi-objective ranking
+python peptide_admet_predictor.py --sequences test_sequences.txt --rank
 ```
 
 ---
 
 ## 📋 Feature Space
 
-The model uses a comprehensive 428-dimensional feature representation:
+428-dimensional representation (identical at training and inference time):
 
-### 1. Amino Acid Composition (AAC) - 20 features
-Frequency of each of the 20 standard amino acids
+### 1. Amino Acid Composition (AAC) — 20 features
+Frequency of each of the 20 standard amino acids.
 
-### 2. Dipeptide Composition (DPC) - 400 features
-Frequency of all possible dipeptide combinations
+### 2. Dipeptide Composition (DPC) — 400 features
+Frequency of all ordered dipeptide pairs.
 
-### 3. Physicochemical Properties - 8 features
-- Molecular weight
-- Average hydropathy (Kyte-Doolittle scale)
-- Hydropathy range
-- Net charge (pH 7.0)
-- Estimated isoelectric point
-- Grand average of hydropathy (GRAVY)
-- Hydrophobic residue ratio
-- Charged residue ratio
+### 3. Physicochemical Properties — 8 features
+Molecular weight (estimate), average hydropathy (Kyte-Doolittle),
+hydropathy range, net charge (pH 7), isoelectric point estimate,
+GRAVY, hydrophobic residue ratio, charged residue ratio.
 
 ---
 
 ## 🔬 Model Architecture
 
-### Ensemble Strategy
-Combines Random Forest and Neural Network classifiers with averaging integration.
+A single shared MLP with one classification head per endpoint
+(defined in `admet_model.py`, used by both trainer and predictor so the
+architecture and checkpoint format can never drift apart):
 
-### Random Forest Component
-- Number of estimators: 100
-- Maximum depth: 15
-- Class weighting: Balanced
-- Random state: 42
+- Input: 428 standardized features
+- Hidden layers: 256 → 128 (ReLU + BatchNorm + Dropout 0.2)
+- Output: 5 sigmoid heads (one per endpoint)
+- Loss: mean per-endpoint BCE (class weights from endpoint prevalence)
+- Optimizer: Adam (lr=3e-4), ReduceLROnPlateau, early stopping on val BCE
 
-### Neural Network Component
-- Input layer: 428 features
-- Hidden layers: [128, 64, 32] neurons
-- Activation: ReLU
-- Regularization: BatchNorm + Dropout (0.3)
-- Output: 1 neuron with sigmoid
-- Optimizer: Adam (lr=0.001)
+Saved artifacts in `peptide_admet_model/`:
 
-### Integration
-Final predictions obtained by averaging probabilities from both models.
+```
+peptide_admet_model/
+├── admet_mlp.pt          # PyTorch state dict + architecture metadata
+├── scaler.pt             # StandardScaler (torch.save)
+├── metrics.json          # MEASURED per-endpoint AUC/MCC/Acc, both splits
+└── feature_names.txt     # 428 feature names (AAC_*, DPC_*, physchem)
+```
+
+---
+
+## 🧬 Data & Evaluation Protocol
+
+### Data: `prepare_data.py`
+
+15,000 synthetic peptide sequences (length 10–30) drawn from 200
+amino-acid-composition families (Dirichlet profiles). Labels come from a
+deliberately crude latent model (length, hydropathy, net charge,
+aromaticity + noise) so that honest, measurable AUCs emerge. Every row is
+stamped `data_origin=synthetic_demo`.
+
+**Why synthetic?** The original repository claimed a 15,000-row *real*
+dataset but shipped no data file, so no model could be trained or verified.
+Rather than fabricate experimental values, the pipeline now ships a
+regenerable, explicitly-labelled demo set. Swapping in real data requires
+only producing a CSV with the same columns (`sequence, family_id,
+data_origin, GI_absorption, Caco2_permeability, BBB_penetration,
+Ames_mutagenicity, hERG_inhibition`).
+
+### Split: `homology_split.py`
+
+Sequences are grouped into **families by amino-acid composition** (the
+feature space the model actually sees). Families are then assigned to
+train/val/test (70/10/20) so that no composition family appears on both
+sides of a boundary. The script verifies and reports the maximum pairwise
+Jaccard overlap between train and test/test composition profiles
+(0.25 in this run; threshold 0.5) and the per-endpoint label-rate delta
+between splits (≤ 0.013), so leakage is *measured*, not assumed. This
+follows the homology/leakage-control protocol of AMPBench-MT
+(arXiv:2607.25518) and is the standard fix for the "sequence-similarity
+memorization" failure mode documented across 2026 AMP benchmarks.
 
 ---
 
@@ -160,37 +218,20 @@ Final predictions obtained by averaging probabilities from both models.
 
 ```
 openclaw-peptide-admet/
-├── peptide_admet_inference.py      # Inference script
-├── peptide_admet_model.py          # Training framework
-├── peptide_admet_model/            # Trained model files
-│   ├── feature_extractor.pkl       # Feature extraction logic
-│   ├── rf_model.pkl               # Random Forest model
-│   ├── nn_model.pkl               # Neural Network model
-│   ├── scaler.pkl                 # Standardization scaler
-│   └── feature_names.txt          # Feature names
-├── real_peptide_data/              # Training dataset
-│   ├── real_peptide_admet_data.csv
-│   ├── X_train.npy, X_val.npy, X_test.npy
-│   └── y_train.npy, y_val.npy, y_test.npy
-├── peptide_admet_manuscript.md     # Full research manuscript
-├── README.md                       # This file
-├── USAGE_GUIDE.md                  # Detailed usage guide
-└── LICENSE                         # MIT License
+├── prepare_data.py             # regenerate the synthetic_demo dataset
+├── homology_split.py           # family-disjoint 70/10/20 split + leakage audit
+├── admet_model.py              # shared MLP definition (trainer + predictor)
+├── train_peptide_admet_model.py# training, dual-split evaluation, metrics.json
+├── peptide_admet_predictor.py  # inference CLI + composite multi-objective score
+├── peptide_admet_model/        # trained artifacts (admet_mlp.pt, scaler.pt, metrics.json)
+├── data/                       # generated CSV + metadata (regenerable; gitignored)
+├── test_sequences.txt          # example candidate list for --rank
+├── peptide_admet_manuscript_jcim.md   # manuscript (updated to measured metrics)
+├── cover_letter_jcim.md
+├── SUBMISSION_CHECKLIST.md
+├── README.md                   # this file
+└── LICENSE                     # MIT License
 ```
-
----
-
-## 📊 Top Important Features
-
-Based on Random Forest feature importance:
-
-1. **AAC_P** (Proline composition) - Importance: 0.089
-2. **AAC_G** (Glycine composition) - Importance: 0.082
-3. **DPC_PP** (Pro-Pro dipeptide) - Importance: 0.075
-4. **DPC_GP** (Gly-Pro dipeptide) - Importance: 0.068
-5. **Molecular Weight** - Importance: 0.062
-
-**Key Insight**: Proline and glycine content are particularly influential for peptide ADMET properties due to their unique structural effects.
 
 ---
 
@@ -199,123 +240,104 @@ Based on Random Forest feature importance:
 ### Example 1: Single Sequence Prediction
 
 ```python
-from peptide_admet_inference import PeptideADMETPredictor
+from peptide_admet_predictor import PeptideADMETPredictor
 
 predictor = PeptideADMETPredictor(model_dir='peptide_admet_model')
-
-# Predict ADMET properties
-sequence = "ACDEFGHIKLMNPQRSTVWY"
-results = predictor.predict(sequence)
-
-# Print results
+results = predictor.predict("WALVKALVNHRISSSLVCG")
 predictor.print_result(results)
 ```
 
-### Example 2: Batch Prediction
+### Example 2: Multi-objective Candidate Ranking
 
 ```python
-sequences = [
-    "ACDEFGHIKLMNPQRSTVWY",  # Random 20-mer
-    "GAGAGAGAGAGA",          # Gly-Ala repeat
-    "KKKKKKKKKK",            # Lysine repeat
-    "VVVVVVVVVV",            # Valine repeat
-]
-
-results = predictor.predict(sequences)
-for seq, res in zip(sequences, results):
-    print(f"\n{seq}:")
-    print(res)
+candidates = ["GAGAGAGAGAGA", "MLLLLLLLLL", "KKKKKKKKKK", "ACDE"]
+ranked = predictor.rank_candidates(candidates)
+# ranked[0] = best composite score (geometric mean of favourable
+# endpoint probabilities: GI+, Caco2+, BBB+, Ames-low, hERG-low)
 ```
 
-### Example 3: Specific Endpoint Prediction
+### Example 3: Model Provenance (no hardcoded numbers)
 
 ```python
-# Predict only specific endpoints
-endpoints = ['GI_absorption', 'BBB_penetration']
-results = predictor.predict(sequence, endpoints=endpoints)
+info = predictor.model_info()
+# {'eval_split': 'homology-controlled ...',
+#  'mean_auc_homology_split': 0.8684,
+#  'trained_on': 'synthetic_demo', ...}
 ```
 
 ---
 
-## 📚 Citation
+## 🔗 Context: 2026 AI/AMP Literature
 
-If you use this model in your research, please cite:
+This revision aligns the repository with the methodological consensus of
+recent antimicrobial-peptide literature (see
+`2026_AI_抗菌胜肽研究報告.md` in the project notes):
 
-```bibtex
-@software{peptide_admet_2026,
-  author = {Pinwan, OpenClaw Team},
-  title = {Peptide ADMET Prediction Model},
-  year = {2026},
-  url = {https://github.com/c00jsw00/openclaw-peptide-admet},
-  doi = {10.5281/zenodo.xxxxxx}
-}
-```
-
----
-
-## 🔬 Training Details
-
-### Dataset
-- **Size**: 15,000 peptide compounds
-- **Sequence length**: 8-25 amino acids
-- **Mean molecular weight**: 1811.4 Da
-- **Data distribution**: Realistic peptide drug properties
-
-### Data Split
-- Training set: 64% (9,600 samples)
-- Validation set: 16% (2,400 samples)
-- Test set: 20% (3,000 samples)
-
-### Training Configuration
-- Batch size: 32
-- Epochs: 30 (with early stopping)
-- Learning rate: 0.001
-- Device: CPU
+- **AMPBench-MT (arXiv:2607.25518, 2026-07)** — benchmark showing that
+  sequence-similarity leakage inflates apparent AMP/ADMET performance;
+  motivates `homology_split.py`.
+- **AMPGAN v3 + PepCraft (arXiv, 2026-06)** — multi-objective scoring of
+  generated candidates; motivates the composite score and `--rank` mode.
+- **ApexGO (Nature Machine Intelligence, 2026-05)** and the **npj Drug
+  Discovery integrated pipeline (2026-05)** — generative redesign of
+  antibiotic scaffolds; the honest-evaluation lessons apply equally to
+  ADMET predictors.
+- **Genotypic Triggers (2026-08)** — pharmacogenomic "back-door" safety
+  blind spot; a reminder that ADMET panels without toxicogenomics
+  endpoints are incomplete.
 
 ---
 
 ## ⚠️ Limitations
 
-1. **Synthetic Data**: Model trained on synthetic data with realistic distributions
-2. **Endpoint Coverage**: Only 5 ADMET endpoints (vs. 18+ in AdmetSAR 2.0)
-3. **Sequence Length**: Optimized for 8-25 amino acid peptides
-4. **Experimental Validation**: Requires experimental validation for specific applications
+1. **Synthetic demo data.** The shipped model was trained on regenerated
+   synthetic data with a crude latent label model. All reported metrics
+   characterize the *pipeline*, not real-peptide ADMET behaviour.
+2. **5 endpoints only** (vs. 18+ in AdmetSAR 2.0 / ADMETlab 3.0). No
+   toxicogenomic / pharmacogenomic endpoints (see Genotypic Triggers,
+   2026-08).
+3. **Composition-level features.** AAC/DPC cannot capture sequence order
+   beyond dipeptides; a language-model or GNN backbone would be needed
+   for order-sensitive properties.
+4. **Sequence length.** Demo data spans 10–30 aa; performance outside
+   this range is unvalidated.
+5. **No experimental validation.** No wet-lab data has been used.
 
 ---
 
 ## 🎯 Future Directions
 
-1. **Experimental Validation**: Collect real experimental ADMET data
-2. **Extended Endpoints**: Expand to 18+ endpoints
-3. **Transfer Learning**: Leverage pre-trained protein language models (ESM-2, ProtBERT)
-4. **Multi-Task Learning**: Joint optimization across all endpoints
-5. **Active Learning**: Minimize experimental data requirements
+1. **Real data integration** — retrain on experimental ADMET/AMP data
+   (AMPBench-MT tasks, AMPDB-derived sets) with the same split protocol.
+2. **Sequence-order features** — pre-trained peptide language models
+   (ESM-2, ProtGPT2 soft prompts) as the feature backbone.
+3. **Generative loop** — couple the predictor with a generator
+   (AMPGAN v3-style) for score-based candidate design, including
+   non-canonical amino acids and end-group modifications.
+4. **Extended endpoints** — CYP inhibition, DILI, pharmacogenomic
+   sensitivity.
+5. **Active learning** — prioritize experiments for the highest-uncertainty
+   candidates.
 
 ---
 
-## 📞 Support
+## 📚 Citation
 
-For questions, issues, or contributions:
+If you use this pipeline in your research, please cite:
 
-- **GitHub Issues**: https://github.com/c00jsw00/openclaw-peptide-admet/issues
-- **Email**: OpenClaw Team
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- OpenClaw Team for computational resources
-- Research community for open-source tools and datasets
-- Peptide drug developers for inspiring this work
+```bibtex
+@software{peptide_admet_2026,
+  author = {OpenClaw Team},
+  title  = {Peptide ADMET Prediction: a reproducible demo pipeline with
+            homology-controlled evaluation},
+  year   = {2026},
+  url    = {https://github.com/c00jsw00/openclaw-peptide-admet},
+  note   = {Revised 2026-08: synthetic_demo data, AMPBench-MT-style split}
+}
+```
 
 ---
 
-**Version**: 1.0  
-**Last Updated**: 2026-03-24  
-**Author**: Pinwan (OpenClaw Team)
+**Version**: 2.0 (integrity revision)
+**Last Updated**: 2026-08-24
+**Author**: OpenClaw Team

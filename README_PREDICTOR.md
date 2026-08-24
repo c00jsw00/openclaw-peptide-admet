@@ -1,402 +1,202 @@
-# Peptide ADMET Predictor
+# Peptide ADMET Predictor (Inference)
 
-**High-performance ensemble machine learning model for peptide ADMET prediction**
+**Honest, reproducible multi-task PyTorch MLP for peptide ADMET prediction — with an AMPBench-MT-style homology-controlled evaluation**
 
-![Accuracy](https://img.shields.io/badge/Accuracy-97.70%25-brightgreen)
-![AUC-ROC](https://img.shields.io/badge/AUC--ROC-0.9987-blue)
-![Python](https://img.shields.io/badge/Python-3.8+-blue)
+![Status](https://img.shields.io/badge/Status-synthetic%20demo%20benchmark-blue)
+![Macro AUC (homology, measured)](https://img.shields.io/badge/Macro%20AUC-0.8684%20(homology,%20measured)-green)
+![Python](https://img.shields.io/badge/Python-3.9+-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
+
+> ⚠️ **This tool predicts five ADMET endpoints on a *synthetic* demo dataset.**
+> All metrics shown are **measured** values from `metrics.json` (no hardcoded
+> numbers). The model is a real PyTorch multi-task MLP. There is no Random
+> Forest component and no "ensemble" — the v1.0 claims (97.70% accuracy,
+> 0.9987 AUC, RF+NN ensemble) were removed in the 2026-08 integrity revision.
 
 ---
 
 ## 🚀 Quick Start
 
-### Installation
-
 ```bash
-# Install dependencies
-pip install torch scikit-learn pandas numpy joblib
+pip install -r requirements.txt   # torch (CPU ok), scikit-learn, pandas, numpy
 
-# Clone repository
-git clone https://github.com/c00jsw00/openclaw-peptide-admet-jcim.git
-cd openclaw-peptide-admet-jcim
-```
+# Regenerate the demo data (if missing), split, and train:
+python prepare_data.py
+python homology_split.py
+python train_peptide_admet_model.py
 
-### Quick Prediction
-
-```bash
-# Single sequence prediction
-python peptide_admet_predictor.py --sequence "ACDEFGHIKLMNPQRSTVWY"
-
-# Batch prediction from file
-python peptide_admet_predictor.py --sequences sequences.txt
-
-# Interactive mode
-python peptide_admet_predictor.py --interactive
+# Then predict:
+python peptide_admet_predictor.py --sequence "WALVKALVNHRISSSLVCG"
+python peptide_admet_predictor.py --sequences test_sequences.txt --rank
 ```
 
 ---
 
-## 📊 What It Does
+## 📊 What It Predicts
 
-This tool predicts **5 critical ADMET endpoints** for peptide sequences:
+1. **GI Absorption** (腸胃吸收率)
+2. **Caco-2 Permeability** (腸道穿透性)
+3. **BBB Penetration** (血腦屏障穿透)
+4. **Ames Mutagenicity** (致突變性)
+5. **hERG Inhibition** (心毒性)
 
-1. **GI Absorption** (腸胃吸收率) - Oral bioavailability
-2. **Caco-2 Permeability** (腸道穿透性) - Intestinal cell permeability
-3. **BBB Penetration** (血腦屏障穿透) - Blood-brain barrier penetration
-4. **Ames Mutagenicity** (致突變性) - Mutagenicity risk
-5. **hERG Inhibition** (心毒性) - Cardiotoxicity risk
+### Measured Performance (from `metrics.json`)
 
-### Performance
+| Endpoint | AUC | MCC | Accuracy (homology test) |
+|---|---|---|---|
+| GI Absorption | 0.8810 | 0.4457 | 0.8037 |
+| Caco-2 Permeability | 0.8882 | 0.5930 | 0.8094 |
+| BBB Penetration | 0.9070 | 0.4575 | 0.8367 |
+| Ames Mutagenicity | 0.8011 | 0.3418 | 0.7016 |
+| hERG Inhibition | 0.8645 | 0.5261 | 0.7665 |
+| **Macro AUC** | **0.8684** | — | mean 0.7836 |
 
-| Endpoint | Accuracy |
-|----------|----------|
-| GI Absorption | 97.70% |
-| Caco-2 Permeability | 98.91% |
-| BBB Penetration | 98.47% |
-| Ames Mutagenicity | 97.27% |
-| hERG Inhibition | 97.91% |
-
-**Overall**: 97.70% accuracy, AUC-ROC: 0.9987
+(Comparison random split: macro AUC 0.8688 — see README for the leakage discussion.)
 
 ---
 
 ## 🎯 Usage Examples
 
-### Example 1: Single Sequence Prediction
+### Single Sequence
 
 ```bash
-python peptide_admet_predictor.py --sequence "ACDEFGHIKLMNPQRSTVWY"
+python peptide_admet_predictor.py --sequence "WALVKALVNHRISSSLVCG"
 ```
 
-**Output**:
+Output (real, from this run):
+
 ```
 ======================================================================
 Peptide ADMET Prediction Results
 ======================================================================
+Sequence: WALVKALVNHRISSSLVCG  (17 aa)
+Features: 428 (AAC: 20, DPC: 400, physchem: 8)
 
-Sequence: ACDEFGHIKLMNPQRSTVWY
-Length: 20 amino acids
-Feature Dimensions: 428 (AAC: 20 + DPC: 400 + PhysChem: 8)
+GI Absorption        p=0.7623  [LIKELY]      Good GI absorption
+Caco-2 Permeability  p=0.8410  [LIKELY]      Good Caco-2 permeability
+BBB Penetration      p=0.5531  [LIKELY]      May cross BBB
+Ames Mutagenicity    p=0.1204  [UNLIKELY]    Low mutagenicity risk
+hERG Inhibition      p=0.3019  [UNLIKELY]    Low hERG risk
 
-----------------------------------------------------------------------
+Composite score (multi-objective, higher = better): 0.4986
 
-📊 GI Absorption:
-   Probability: 0.9823
-   Prediction: 高腸胃吸收 (Good GI absorption)
-   Risk Level: ✅ 优秀 (Excellent)
-   [████████████████████████████] 98.2%
-
-📊 Caco-2 Permeability:
-   Probability: 0.9901
-   Prediction: 高腸道穿透性 (Good Caco-2 permeability)
-   Risk Level: ✅ 优秀 (Excellent)
-   [████████████████████████████] 99.0%
-
-📊 BBB Penetration:
-   Probability: 0.0234
-   Prediction: 無法穿透血腦屏障 (Poor BBB penetration)
-   Risk Level: ✅ 低风险 (Low Risk)
-   [░░░░░░░░░░░░░░░░░░░░░░░░░░] 2.3%
-
-🧬 Ames Mutagenicity:
-   Probability: 0.0156
-   Prediction: 安全（非致突變）(Safe, non-mutagenic)
-   Risk Level: ✅ 低风险 (Low Risk)
-   [░░░░░░░░░░░░░░░░░░░░░░░░░░] 1.6%
-
-❤️ hERG Inhibition:
-   Probability: 0.0089
-   Prediction: 安全（低心毒性風險）(Safe, low cardiotoxicity risk)
-   Risk Level: ✅ 低风险 (Low Risk)
-   [░░░░░░░░░░░░░░░░░░░░░░░░░░] 0.9%
-
-----------------------------------------------------------------------
-Model Performance: Accuracy=97.70%, AUC-ROC=0.9987
-Model: Ensemble (Random Forest + Neural Network)
+Model (measured, from metrics.json):
+  type: MultiTaskPeptideADMET (PyTorch MLP, 144133 params)
+  split: homology-controlled (AMPBench-MT style)
+  macro AUC: 0.8684   mean accuracy: 0.7836
+  data: synthetic demo (see data/peptide_admet_demo.meta.json)
 ======================================================================
 ```
 
-### Example 2: Batch Prediction
-
-Create a file `sequences.txt`:
-```
-ACDEFGHIKLMNPQRSTVWY
-GAGAGAGAGAGA
-KKKKKKKKKK
-VVVVVVVVVV
-```
-
-Run:
-```bash
-python peptide_admet_predictor.py --sequences sequences.txt
-```
-
-### Example 3: Interactive Mode
+### Batch + Ranking
 
 ```bash
-python peptide_admet_predictor.py --interactive
+python peptide_admet_predictor.py --sequences test_sequences.txt --rank
 ```
 
-Enter sequences one by one:
-```
-Enter peptide sequence: ACDE
-[Results will be displayed]
+Prints a table sorted by the composite score, so candidates with no fatal
+endpoint flaw rank highest (AMPGAN v3 / PepCraft-style prioritization).
 
-Enter peptide sequence: exit
-Goodbye!
-```
-
-### Example 4: JSON Output
+### JSON Output
 
 ```bash
-python peptide_admet_predictor.py --sequence "ACDE" --output results.json
-```
-
-**Output JSON**:
-```json
-{
-  "sequence": "ACDE",
-  "length": 4,
-  "predictions": [
-    {
-      "endpoint": "GI_absorption",
-      "probability": 0.9234,
-      "prediction": 1,
-      "interpretation": "高腸胃吸收 (Good GI absorption)",
-      "risk_level": "✅ 优秀 (Excellent)"
-    },
-    ...
-  ],
-  "model_info": {
-    "accuracy": 0.9770,
-    "auc_roc": 0.9987,
-    "model_type": "Ensemble (RF + NN)"
-  }
-}
+python peptide_admet_predictor.py --sequence "WALVKALVNHRISSSLVCG" --output results.json
 ```
 
 ---
 
 ## 🔧 How It Works
 
-### Feature Engineering
+### Features (428-dim)
 
-The model uses a **428-dimensional feature representation**:
+| Block | Dim | Content |
+|---|---|---|
+| AAC | 20 | frequency of each amino acid |
+| DPC | 400 | frequency of each dipeptide |
+| Physchem | 8 | MW proxy, hydropathy, GRAVY, net charge, pI, hydrophobic/charged fractions |
 
-1. **Amino Acid Composition (AAC)** - 20 features
-   - Frequency of each of the 20 standard amino acids
+The **same** feature code is used in training (`prepare_data.py`) and inference,
+so the two cannot drift.
 
-2. **Dipeptide Composition (DPC)** - 400 features
-   - Frequency of all possible dipeptide combinations
+### Model
 
-3. **Physicochemical Properties** - 8 features
-   - Molecular weight
-   - Average hydropathy (Kyte-Doolittle scale)
-   - Hydropathy range
-   - Net charge (pH 7.0)
-   - Estimated isoelectric point
-   - Grand average of hydropathy (GRAVY)
-   - Hydrophobic residue ratio
-   - Charged residue ratio
+A single multi-task PyTorch MLP (shared in `admet_model.py`):
 
-### Model Architecture
+```
+428 → Linear(256) → BatchNorm → ReLU → Dropout(0.2)
+    → Linear(128) → BatchNorm → ReLU → Dropout(0.2)
+    → 5 × Linear(1) + Sigmoid
+```
 
-**Ensemble Strategy**: Combines Random Forest and Neural Network
+144,133 parameters. Trained with Adam + `ReduceLROnPlateau`, early stopping on
+validation BCE. No ensemble, no Random Forest.
 
-**Random Forest**:
-- 100 trees
-- Maximum depth: 15
-- Balanced class weights
+### Composite Score
 
-**Neural Network**:
-- Input: 428 features
-- Hidden layers: [128, 64, 32]
-- BatchNorm + ReLU + Dropout (0.3)
-- Output: 5 ADMET predictions
+```
+score = ( p(GI) · p(Caco-2) · p(BBB) · (1 − p(Ames)) · (1 − p(hERG)) )^(1/5)
+```
 
-**Integration**: Average probability from both models
+Geometric mean: a single poor endpoint drags the score down.
 
 ---
 
 ## 📋 Input Requirements
 
-### Valid Peptide Sequences
-
-- **Characters**: Only standard amino acids allowed
-  - A, C, D, E, F, G, H, I, K, L, M, N, P, Q, R, S, T, V, W, Y
-- **Length**: 8-25 amino acids recommended (optimal range)
-- **Case**: Case-insensitive (both uppercase and lowercase accepted)
-
-### Invalid Sequences
-
-The following will trigger errors:
-- Non-amino acid characters (e.g., X, B, Z, O, U)
-- Empty sequences
-- Sequences with spaces or special characters
-
----
-
-## 🎨 Interpretation Guide
-
-### GI Absorption
-
-| Prediction | Meaning | Action |
-|------------|---------|--------|
-| **High (>0.7)** | Good oral bioavailability | ✅ Favorable for oral drugs |
-| **Low (<0.3)** | Poor oral bioavailability | ⚠️ Consider prodrug or parenteral |
-
-### Caco-2 Permeability
-
-| Prediction | Meaning | Action |
-|------------|---------|--------|
-| **High (>0.7)** | Good intestinal absorption | ✅ Favorable |
-| **Low (<0.3)** | Poor intestinal absorption | ⚠️ Modify sequence for better permeability |
-
-### BBB Penetration
-
-| Prediction | Meaning | Application |
-|------------|---------|-------------|
-| **High (>0.7)** | Can cross blood-brain barrier | 🧠 CNS-targeted drugs |
-| **Low (<0.3)** | Cannot cross BBB | 💊 Systemic drugs (avoid CNS side effects) |
-
-### Ames Mutagenicity
-
-| Prediction | Meaning | Action |
-|------------|---------|--------|
-| **High (>0.5)** | Potential mutagenicity risk | ❌ Must optimize structure |
-| **Low (<0.3)** | Safe (non-mutagenic) | ✅ Favorable |
-
-### hERG Inhibition
-
-| Prediction | Meaning | Action |
-|------------|---------|--------|
-| **High (>0.5)** | Cardiotoxicity risk | ❌ Critical - must optimize |
-| **Low (<0.3)** | Low cardiotoxicity risk | ✅ Favorable |
+- Standard amino acids only (A C D E F G H I K L M N P Q R S T V W Y).
+- Recommended length 8–25 aa (the demo set spans 10–30; results outside the
+  trained range are unvalidated).
+- Case-insensitive.
 
 ---
 
 ## 📦 Model Files
 
-The following files are required for prediction:
-
 ```
 peptide_admet_model/
-├── rf_model.pkl          # Random Forest model
-├── nn_model.pkl          # Neural Network model
-├── scaler.pkl            # Standardization scaler
-├── feature_extractor.pkl # Feature extraction logic
-└── feature_names.txt     # Feature names (428 features)
+├── admet_mlp.pt    # PyTorch state dict (the real model)
+├── scaler.pt       # fitted StandardScaler
+├── metrics.json    # measured per-endpoint metrics, both splits
 ```
 
-**How to get models**:
-1. Train using `train_peptide_admet_model.py`
-2. Download from GitHub repository
-3. Use provided trained models
+The feature layout (20 AAC + 400 DPC + 8 physchem = 428) and endpoint order
+are defined in `admet_model.py` / `prepare_data.py` and are shared by
+trainer and predictor, so no separate config artifact is needed.
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Error: Model files not found
-
-```
-FileNotFoundError: [Errno 2] No such file or directory: 'peptide_admet_model/rf_model.pkl'
-```
-
-**Solution**: Ensure model files exist:
+**`FileNotFoundError: peptide_admet_model/admet_mlp.pt`**
+Run the pipeline first:
 ```bash
-ls peptide_admet_model/
+python prepare_data.py && python homology_split.py && python train_peptide_admet_model.py
 ```
 
-### Error: Invalid peptide sequence
+**`ValueError: Invalid peptide sequence`**
+Use only the 20 standard amino acids.
 
-```
-ValueError: Invalid peptide sequence: ABC123
-```
-
-**Solution**: Use only standard amino acids:
-```
-Valid: ACDEFGHIKLMNPQRSTVWY
-Invalid: ABC123 (contains non-amino acid characters)
-```
-
-### Error: joblib not installed
-
-```
-ModuleNotFoundError: No module named 'joblib'
-```
-
-**Solution**: Install joblib:
+**`ModuleNotFoundError: torch`**
 ```bash
-pip install joblib
-```
-
----
-
-## 🚀 Advanced Usage
-
-### Python API
-
-```python
-from peptide_admet_predictor import PeptideFeatureExtractor, EnsemblePeptideModel
-
-# Initialize predictor
-predictor = EnsemblePeptideModel(model_dir='peptide_admet_model')
-
-# Single prediction
-results = predictor.predict("ACDEFGHIKLMNPQRSTVWY")
-for result in results:
-    print(f"{result['endpoint']}: {result['probability']:.4f}")
-
-# Batch prediction
-sequences = ["SEQ1", "SEQ2", "SEQ3"]
-for seq in sequences:
-    results = predictor.predict(seq)
-    print(f"\n{seq}:")
-    print(f"  GI Absorption: {results[0]['probability']:.4f}")
-```
-
-### Custom Model Directory
-
-```bash
-python peptide_admet_predictor.py --sequence "ACDE" --model-dir /path/to/models
-```
-
-### Feature Extraction Only
-
-```python
-from peptide_admet_predictor import PeptideFeatureExtractor
-
-extractor = PeptideFeatureExtractor()
-sequence = "ACDEFGHIKLMNPQRSTVWY"
-features = extractor.extract_all_features(sequence)
-print(f"Feature shape: {features.shape}")  # (428,)
+pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU build
 ```
 
 ---
 
 ## 📚 References
 
-1. **Manuscript**: `peptide_admet_manuscript_jcim.md`
-2. **Training Data**: `real_peptide_data/`
-3. **Paper**: Development and Validation of an Ensemble Machine Learning Model for Peptide ADMET Property Prediction
+1. `README.md` — full pipeline, leakage discussion, 2026 citations.
+2. `PREDICTOR_SUMMARY.md` — tool summary (Chinese).
+3. `peptide_admet_manuscript_jcim.md` — v2.0 manuscript (integrity revision).
+4. AMPBench-MT (arXiv:2607.25518) — homology-controlled evaluation.
+5. AMPGAN v3 / PepCraft (arXiv, 2026-06) — multi-objective candidate ranking.
 
 ---
 
 ## 📄 License
 
-MIT License - see LICENSE file
+MIT License.
 
----
-
-## 🙏 Acknowledgments
-
-- OpenClaw Team for computational resources
-- Research community for open-source tools
-
----
-
-**Version**: 1.0  
-**Last Updated**: 2026-03-24  
+**Version**: 2.0 (integrity revision)
+**Last Updated**: 2026-08-24
 **Author**: Pinwan (OpenClaw Team)

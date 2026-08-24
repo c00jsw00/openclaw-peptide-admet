@@ -1,24 +1,30 @@
-# Development and Validation of an Ensemble Machine Learning Model for Peptide ADMET Property Prediction
+# An Honest, Reproducible Benchmark for Peptide ADMET Prediction: Homology-Controlled Evaluation of a Multi-Task Neural Network on a Regenerable Synthetic Demo Set
 
-**Running Title:** Ensemble ML for Peptide ADMET Prediction
+**Running Title:** Homology-Controlled Peptide ADMET Benchmark
 
 **Article Type:** Article (Full-Length Research Manuscript)
+
+**Version:** 2.0 (integrity revision, 2026-08-24). This revision replaces the v1.0 manuscript's
+reported metrics (97.70% accuracy / 0.9987 AUC), which traced to hardcoded values and a
+homology-uncontrolled split on a dataset that was never actually shipped with the
+repository. All performance statements below are *measured* and reproducible from the
+released code (see §2 and the repository's `metrics.json`).
 
 ---
 
 ## Abstract
 
-Peptide-based therapeutics represent one of the fastest-growing pharmaceutical classes, yet their development is hindered by complex ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) profiles. Traditional peptide drugs face significant challenges including poor oral bioavailability, rapid renal clearance, metabolic instability, and membrane permeability limitations. In this study, we developed a high-performance ensemble machine learning model for predicting five critical ADMET endpoints in peptides: gastrointestinal (GI) absorption, Caco-2 permeability, blood-brain barrier (BBB) penetration, Ames mutagenicity, and hERG inhibition. Our model integrates amino acid composition (AAC), dipeptide composition (DPC), and physicochemical properties into a 428-dimensional feature space, combined with Random Forest and neural network classifiers. Trained on 15,000 synthetic peptide compounds with realistic property distributions, the ensemble model achieved exceptional performance with accuracy of 97.70%, AUC-ROC of 0.9987, precision of 0.9909, recall of 0.9582, and F1 score of 0.9743. This represents a 64.87% improvement over graph neural network (GNN) approaches when using equivalent feature representations. The model demonstrates superior performance across all ADMET endpoints, with GI absorption accuracy of 97.70%, Caco-2 permeability of 98.91%, BBB penetration of 98.47%, Ames mutagenicity of 97.27%, and hERG inhibition of 97.91%. Our findings demonstrate that ensemble learning with handcrafted peptide features outperforms deep learning approaches for peptide ADMET prediction when training data is limited, providing a reliable computational tool for early-stage peptide drug discovery and optimization.
+Peptide-based therapeutics are one of the fastest-growing pharmaceutical classes, yet computational ADMET prediction for peptides is plagued by an evaluation-integrity problem that 2026 benchmark work has begun to expose: sequence-similarity leakage between train and test sets inflates reported performance, and several public tools report metrics that cannot be reproduced from their released artifacts. We contribute a reproducible benchmark and reference implementation for five peptide ADMET endpoints (GI absorption, Caco-2 permeability, BBB penetration, Ames mutagenicity, hERG inhibition). The pipeline consists of (i) a fully regenerable synthetic demo dataset of 15,000 sequences with explicitly labeled provenance, (ii) an AMPBench-MT-style homology-controlled train/val/test split that groups sequences by amino-acid-composition family and *measures* residual leakage, and (iii) a shared multi-task PyTorch MLP (428-dim AAC/DPC/physicochemical features; 144,133 parameters) whose exact weights, scaler, and measured per-endpoint metrics are released with the repository. On the homology-controlled split the model achieves a macro AUC of 0.8684 (mean accuracy 0.7836), compared with 0.8688 on a plain random split — a near-zero delta that we attribute to the limited sequence-level signal in composition features rather than to leakage. We deliberately report these *modest* numbers: on a synthetic latent-physicochemical label model, 0.8–0.9 AUC is the expected ceiling, and we treat the near-parity between split protocols as the demonstration the field needs — honest numbers, not 0.9987. We further add a multi-objective composite score (geometric mean over favorable endpoint probabilities, in the spirit of generative AMP campaigns such as AMPGAN v3 / PepCraft) for candidate prioritization. We position this work as a reproducibility and evaluation-protocol contribution, not as a claim of real-peptide predictive accuracy, and we make no submission-ready performance claim until real experimental data are used.
 
-**Keywords:** Peptide ADMET prediction | machine learning | ensemble methods | drug discovery | gastrointestinal absorption | blood-brain barrier penetration | hERG inhibition | computational chemistry | cheminformatics
+**Keywords:** peptide ADMET prediction | benchmark | evaluation leakage | homology-controlled split | multi-task learning | drug discovery | reproducibility | hERG inhibition | blood-brain barrier penetration
 
 ---
 
 ## Graphical Abstract and Table of Contents Entry
 
-**Table of Contents Graphic:** [Figure showing peptide sequence → 428D features (AAC + DPC + physchem) → Ensemble Model (RF + NN) → 5 ADMET predictions with 97.70% accuracy]
+**Table of Contents Graphic:** [peptide sequence → 428-dim features (AAC + DPC + physchem) → multi-task MLP (5 heads) → 5 ADMET probabilities → multi-objective composite score; inset: leakage audit of the homology-controlled split]
 
-**TOC Entry:** A high-performance ensemble machine learning model achieves 97.70% accuracy for peptide ADMET prediction using 428-dimensional feature representations combining amino acid composition, dipeptide composition, and physicochemical properties.
+**TOC Entry:** A regenerable synthetic demo set, an AMPBench-MT-style homology-controlled split with leakage auditing, and a released multi-task MLP yield reproducible peptide ADMET benchmark numbers (macro AUC 0.868) — and a template for how the field should report them.
 
 ---
 
@@ -26,578 +32,216 @@ Peptide-based therapeutics represent one of the fastest-growing pharmaceutical c
 
 ### 1.1 Background
 
-Peptide therapeutics have emerged as a promising class of drugs, with over 90 peptide drugs currently approved and hundreds more in clinical development.[1,2] Their high specificity, potency, and favorable safety profiles compared to small molecules have driven extensive research in peptide drug discovery. The global peptide therapeutics market was valued at approximately USD 30 billion in 2023 and is projected to reach USD 60 billion by 2030, growing at a compound annual growth rate (CAGR) of 10.5%.[16] Their high specificity, potency, and favorable safety profiles compared to small molecules have driven extensive research in peptide drug discovery. However, the development of peptide-based drugs faces unique challenges that differ significantly from traditional small molecule drug development.
+Peptide therapeutics have emerged as a promising class of drugs, with over 90 approved peptide drugs and hundreds more in clinical development. Their high specificity, potency, and favorable safety profiles have driven extensive research, while the development of peptide drugs faces unique challenges that differ from small-molecule drug development:
 
-The primary obstacles in peptide drug development include:
+1. **Poor Oral Bioavailability**: Peptides typically exhibit low gastrointestinal absorption due to large molecular size (>500 Da), high polarity, and enzymatic degradation in the digestive tract. Only approximately 1–2% of peptide drugs are administered orally.
+2. **Membrane Permeability Limitations**: The polar nature of peptide bonds and side chains limits passive diffusion across biological membranes; the blood-brain barrier (BBB) imposes an even stricter barrier for CNS-targeted therapeutics.
+3. **Metabolic Instability**: Peptides are rapidly degraded by proteases and peptidases, leading to short half-lives.
+4. **Rapid Renal Clearance**: Small peptides (<5 kDa) are efficiently filtered by the kidneys, reducing systemic exposure.
+5. **Potential Toxicity**: Some peptide sequences exhibit cytotoxicity, immunogenicity, or off-target effects, including hERG channel inhibition that can lead to QT prolongation and torsades de pointes.
 
-1. **Poor Oral Bioavailability**: Peptides typically exhibit low gastrointestinal absorption due to their large molecular size (>500 Da), high polarity, and susceptibility to enzymatic degradation in the digestive tract.[3,4] The complex structure of peptides, including multiple hydrogen bond donors and acceptors, creates significant barriers to passive diffusion across the intestinal epithelium. Only approximately 1-2% of peptide drugs are currently administered orally, with the vast majority requiring parenteral administration (intravenous, subcutaneous, or intramuscular injections).[17]
+### 1.2 The Evaluation-Integrity Problem in Peptide ADMET
 
-2. **Membrane Permeability Limitations**: The polar nature of peptide bonds and side chains creates significant barriers to passive diffusion across biological membranes, including intestinal epithelium and the blood-brain barrier.[5,6] For CNS-targeted peptide therapeutics, the blood-brain barrier (BBB) presents an even more stringent challenge, as it allows only highly lipophilic molecules with molecular weights <400 Da to passively penetrate.[18]
+Beyond the biological challenges, computational peptide ADMET has a methodological problem that recent 2026 work has brought to the foreground:
 
-3. **Metabolic Instability**: Peptides are rapidly degraded by proteases and peptidases throughout the body, leading to short half-lives and requiring frequent dosing.[7,8] In the gastrointestinal tract, enzymes such as pepsin, trypsin, chymotrypsin, and various brush border peptidases can rapidly cleave peptide bonds. In circulation, aminopeptidases, carboxypeptidases, and endopeptidases further degrade peptides, often within minutes of administration.[19]
+- **Sequence-similarity leakage.** AMPBench-MT (arXiv:2607.25518), a 2026 multi-task benchmark for antimicrobial peptides, shows that when near-duplicate or compositionally similar sequences fall on both sides of the train/test boundary, reported accuracy and AUC can be inflated far beyond what the model could achieve on genuinely novel sequences. Homology-aware (or composition-family-aware) splitting is the currently recommended remedy, but few public peptide-ADMET repositories audit their splits or release the audit.
+- **Non-reproducible metrics.** We observed, in our own v1.0 submission package, metrics that were hardcoded in the inference CLI and inconsistent with the shipped model artifacts, and a "training dataset" referenced in documentation that was not present in the repository. Such artifacts are not isolated: generative AMP campaigns in 2026 (e.g., the AMPGAN v3 / PepCraft workflow, arXiv 2026) emphasize *measured* MIC-linked validation of generated candidates precisely because reported-in-silico-metrics-only studies have repeatedly failed wet-lab confirmation.
+- **Blindness to pharmacogenomic "back doors".** The 2026 Genotypic Triggers work demonstrates that safety endpoints can be missed entirely when a model's endpoint list lacks pharmacogenomic dimensions; a 5-endpoint ADMET panel that omits toxicogenomic and immunogenicity endpoints should state that limitation explicitly, as we do in §4.4.
 
-4. **Rapid Renal Clearance**: Small peptides (<5 kDa) are efficiently filtered by the kidneys, further reducing their systemic exposure.[9] The glomerular filtration rate (GFR) of approximately 120 mL/min in healthy adults means that peptides smaller than the filtration cutoff are rapidly eliminated, necessitating continuous infusion or frequent dosing to maintain therapeutic concentrations.[20]
+### 1.3 Prior Work (unchanged from v1.0, condensed)
 
-5. **Potential Toxicity**: Certain peptide sequences may exhibit cytotoxicity, immunogenicity, or off-target effects including hERG channel inhibition leading to cardiotoxicity.[10,11] hERG (human ether-à-go-go-related gene) channel inhibition is a particular concern, as it can lead to QT interval prolongation and potentially fatal arrhythmias such as torsades de pointes.[21]
-
-### 1.2 ADMET Challenges in Peptide Drug Development
-
-Unlike small molecules, peptides present unique ADMET prediction challenges that complicate the drug discovery process:
-
-**Molecular Complexity**: Peptides have higher molecular weights (typically 500-5000 Da for drug-like peptides), increased hydrogen bond donors and acceptors (often 10-30 H-bond donors/acceptors vs. <5 for small molecules), and greater conformational flexibility compared to small molecules.[22] This complexity increases the dimensionality of the chemical space and complicates structure-activity relationship (SAR) modeling. The presence of multiple chiral centers (one per amino acid) further multiplies the number of possible stereoisomers, with each peptide of length n having 2^n stereoisomers.
-
-**Sequence-Dependent Properties**: Peptide ADMET properties are highly dependent on amino acid sequence, composition, and structural motifs, making generalization difficult.[23] For example, a single amino acid substitution can dramatically alter membrane permeability (e.g., replacing a charged residue with a hydrophobic one), metabolic stability (e.g., proline at cleavage sites reduces protease susceptibility), or toxicity (e.g., arginine-rich sequences may induce hERG inhibition).[24] This sequence-dependence means that traditional small molecule QSAR approaches, which rely on molecular fingerprints and descriptors, are often inadequate for peptides.
-
-**Limited Training Data**: High-quality experimental ADMET data for peptides is scarce compared to small molecules, with most public databases containing primarily small molecule compounds.[25] The ChEMBL database, for instance, contains over 2 million compounds but only ~5,000 peptide entries with experimental ADMET measurements. This data scarcity poses significant challenges for training machine learning models, particularly deep learning approaches that typically require thousands to millions of labeled examples. Furthermore, experimental ADMET measurements for peptides are often inconsistent across laboratories due to differences in assay conditions, peptide purity, and measurement protocols.
-
-**Feature Representation**: The appropriate representation of peptide sequences for machine learning remains an open question, with competing approaches including sequence-based, structure-based, and graph-based methods.[26] Sequence-based methods (e.g., amino acid composition, k-mer frequencies) are simple and interpretable but may miss important structural information. Structure-based methods require accurate 3D structures, which are difficult to obtain experimentally and computationally expensive to predict. Graph-based methods (e.g., molecular graph neural networks) capture topological information but require complex graph construction and may not generalize well to novel peptide sequences. The choice of feature representation significantly impacts model performance and interpretability.
-
-**Computational Cost**: Peptide ADMET prediction is computationally intensive due to the large conformational space and the need to consider multiple molecular representations. Accurate prediction of peptide properties often requires molecular dynamics simulations or quantum mechanical calculations, which are prohibitively expensive for high-throughput screening of large peptide libraries.[27]
-
-**Cross-Domain Applicability**: Peptide ADMET prediction models must handle sequences of varying lengths (from dipeptides to >50 amino acids) and diverse amino acid compositions. This cross-domain applicability requirement is particularly challenging, as models trained on one peptide class may not generalize to another.
-
-### 1.3 Prior Work and Limitations
-
-Several computational approaches have been developed for peptide ADMET prediction, each with distinct strengths and limitations:
-
-**AdmetSAR 2.0**[12]: Provides 18 ADMET endpoints using QSAR models trained on small molecules. While useful, its applicability to peptides is limited due to domain mismatch. The models were primarily trained on the DrugBank database, which contains <5% peptide compounds. Evaluation on peptide test sets shows accuracy of only ~65-75% for peptide-specific endpoints, significantly lower than the 80-85% performance on small molecules. The method relies on molecular fingerprints (MACCS keys, Morgan fingerprints) that are not optimized for peptide sequences.
-
-**SwissADME**[13]: A free web tool supporting peptide prediction but with limited endpoint coverage and accuracy for peptide-specific properties. The tool implements the BOILED-Egg model for GI absorption and BBB penetration, which was trained on a mixed dataset of small molecules and peptides. While computationally efficient (<1 second per peptide), the method achieves only ~70-75% accuracy on external peptide test sets. The tool does not provide mutagenicity or cardiotoxicity predictions for peptides.
-
-**ADMETlab 3.0**[14]: Offers 119 ADMET endpoints but primarily optimized for small molecules, with SSL certificate issues and limited peptide validation. The web server provides batch prediction capabilities and API access, but its peptide prediction models were not specifically validated. Performance benchmarks on peptide datasets show accuracy ranging from 55-80% depending on the endpoint, with particularly poor performance for hERG inhibition (~50%, essentially random). The 119 endpoints include many that are not relevant for peptides (e.g., drug-likeness scores based on Lipinski rules).
-
-**pepADMET**[15]: A dedicated peptide ADMET prediction platform using graph neural networks (GNN) with multi-task learning. While promising, GNN approaches require complex molecular graph construction and extensive training data. The original pepADMET paper reported 70-75% accuracy on 5 ADMET endpoints using a GNN architecture with 3 graph convolutional layers. However, subsequent benchmarks by independent groups have shown performance closer to 60-65% on external test sets, suggesting overfitting to the training distribution. The GNN approach also requires significant computational resources (GPU for training, ~2 hours for a dataset of 10,000 peptides) and is less interpretable than traditional QSAR methods.
-
-**Deep Learning Approaches**: Recent work has explored LSTM, Transformer, and GNN architectures for peptide property prediction. However, these methods typically require large training datasets (>10,000 samples) and significant computational resources.[28] For example, peptide property prediction using ESM-2 (a protein language model) requires downloading a 250M parameter model and performing inference on GPU, taking ~5 minutes per peptide. While these methods achieve state-of-the-art performance on some tasks, they are less practical for high-throughput screening applications due to computational requirements and limited interpretability.
-
-**Traditional QSAR Methods**: Classical machine learning approaches (Random Forest, SVM, XGBoost) with handcrafted features remain competitive for peptide ADMET prediction. A 2022 study comparing 10 different methods for peptide permeability prediction found that Random Forest with amino acid composition features achieved 78% accuracy, outperforming LSTM (72%) and GNN (68%).[29] However, these studies typically use smaller datasets (<5,000 samples) and fewer endpoints.
-
-**Research Gaps**: Despite these advances, several critical gaps remain:
-
-1. **Limited endpoint coverage**: Most methods focus on 3-5 endpoints, missing critical toxicity and pharmacokinetic properties.
-
-2. **Data scarcity**: Public peptide ADMET datasets are small (<10,000 samples) and often contain low-quality or inconsistent measurements.
-
-3. **Model interpretability**: Deep learning approaches provide limited insight into which peptide features drive predictions, hindering rational design.
-
-4. **Computational efficiency**: Many methods are too slow for screening large peptide libraries (>100,000 sequences).
-
-5. **Generalization**: Models trained on one peptide class often fail to generalize to structurally distinct peptides.
-
-Our study addresses these gaps by developing an ensemble learning approach that combines the interpretability and efficiency of traditional QSAR methods with the predictive power of modern machine learning, achieving high accuracy with moderate computational requirements.
+Classical tools (AdmetSAR 2.0, SwissADME, ADMETlab 3.0, pepADMET) offer peptide ADMET predictions but were primarily optimized for small molecules or validated on small, non-external test sets. Deep approaches (LSTM, Transformer, GNN, protein language models) capture sequence order but demand large datasets and GPU resources. Handcrafted-composition QSAR remains competitive, particularly at modest data scale. 2026 has added generative-redesign pipelines for antibiotics (ApexGO, *Nature Machine Intelligence*, 2026-05) and integrated agentic pipelines for peptide campaigns (*npj Drug Discovery*, 2026-05), all of which converge on the same methodological point: **report what was measured, on which split, with which leakage controls.**
 
 ### 1.4 Study Objectives
 
-This study aims to address the limitations of existing peptide ADMET prediction methods by:
+1. Provide a **fully regenerable** demo dataset (fixed seed, explicit `data_origin` provenance column, metadata file) so that no shipped artifact can ever again be silently missing or fabricated.
+2. Implement an **AMPBench-MT-style homology-controlled split** (composition-family grouping, 70/10/20) with an explicit **leakage audit** (maximum pairwise Jaccard across splits; per-endpoint label-rate deltas) released alongside the split.
+3. Train and release a **shared multi-task PyTorch MLP** — the *same* architecture class in trainer and predictor — with the exact weights, scaler, and measured metrics in `metrics.json`.
+4. Report **measured** per-endpoint AUC/MCC/accuracy on both the homology-controlled split (headline) and a random split (comparison), and state plainly what the numbers do and do not claim.
+5. Add a **multi-objective composite score** for candidate prioritization, mirroring the multi-objective ranking used in generative AMP campaigns (AMPGAN v3 / PepCraft).
 
-1. **Developing an ensemble machine learning model** that combines Random Forest and neural network classifiers, leveraging the complementary strengths of both approaches. Random Forest provides robustness to high-dimensional sparse features and inherent feature importance estimation, while the neural network captures complex non-linear interactions between features.
+### 1.5 Significance
 
-2. **Utilizing optimized peptide feature representations** including amino acid composition (AAC), dipeptide composition (DPC), and physicochemical properties into a comprehensive 428-dimensional feature space. We systematically evaluate the contribution of each feature category to prediction accuracy.
-
-3. **Achieving high prediction accuracy with moderate training data requirements** (~15,000 samples). We demonstrate that ensemble learning with handcrafted features outperforms deep learning approaches when training data is limited, addressing a critical challenge in peptide ADMET prediction.
-
-4. **Providing comprehensive validation** across five critical ADMET endpoints: GI absorption, Caco-2 permeability, BBB penetration, Ames mutagenicity, and hERG inhibition. We employ rigorous cross-validation and external validation strategies to ensure model generalizability.
-
-5. **Comparing performance against GNN-based approaches** to identify optimal modeling strategies. We conduct head-to-head comparisons using equivalent feature representations to isolate the impact of model architecture from feature representation quality.
-
-### 1.5 Significance and Impact
-
-This work makes several significant contributions to the field of peptide drug discovery and computational chemistry:
-
-**Practical Impact**: The developed model provides peptide drug researchers with a fast, accurate, and interpretable tool for early-stage ADMET prediction, reducing experimental burden and accelerating lead optimization. The model can screen thousands of peptide sequences in minutes, enabling high-throughput virtual screening of peptide libraries.
-
-**Methodological Advancement**: We demonstrate that ensemble learning with optimized handcrafted features can outperform deep learning approaches for peptide ADMET prediction, challenging the prevailing assumption that deep learning is always superior. This finding has implications for other peptide property prediction tasks.
-
-**Reproducibility**: All code, trained models, and data generation scripts are openly available, enabling independent verification and extension of our work. This addresses the reproducibility crisis in computational drug discovery.
-
-**Community Resource**: The peptide-specific feature engineering approach and ensemble modeling strategy can be extended to additional ADMET endpoints and other peptide properties, providing a foundation for future research.
+**Methodological**: a small, self-contained reference implementation of the evaluation protocol (leakage audit + dual-split reporting + measured-metrics-only inference) that the field can adopt.
+**Reproducibility**: every number in this manuscript is a function of released code; `prepare_data.py → homology_split.py → train_peptide_admet_model.py → peptide_admet_predictor.py` regenerates the pipeline end-to-end on CPU in under an hour.
+**Honesty**: we report macro AUC 0.8684, not 0.9987. The near-zero delta between homology-controlled and random splits (§3.2) is the *finding* — on composition-level features over this demo set, there is little leakage to control, and the modest absolute numbers are what a latent-physicochemical label model allows.
 
 ---
 
 ## 2. Materials and Methods
 
-### 2.1 Data Collection and Generation
+### 2.1 Data Generation (synthetic demo set, explicitly labeled)
 
-**Dataset Construction**: Given the scarcity of experimental peptide ADMET data, we generated a synthetic dataset of 15,000 peptide compounds with realistic property distributions based on known peptide drug characteristics. The dataset generation followed a multi-step process:
+Because no experimental peptide ADMET dataset of this size is openly available under a permissive license, and because the v1.0 "15,000 real peptides" CSV was never actually present in the repository, we generate a **synthetic demo dataset** and label it as such everywhere:
 
-**Step 1: Sequence Generation**: We employed a Markov chain-based sequence generation algorithm trained on the PepBank database (v2025.1), which contains >100,000 experimentally validated peptide sequences. This approach preserves natural amino acid transition probabilities while ensuring sufficient sequence diversity. Peptide sequences were generated with lengths ranging from 8 to 25 amino acids, reflecting typical peptide drug sizes. The amino acid composition followed natural protein distributions while ensuring sufficient diversity. Each sequence was validated to exclude toxic motifs (e.g., RGD-containing sequences for anti-thrombotic screening, T-cell epitope motifs).
+- **Sequences**: 15,000 sequences, lengths 10–30 aa. Sequences are drawn from 10,000 composition "families"; each family has an amino-acid composition profile sampled from a Dirichlet distribution (per-AAs α ∈ [0.8, 6.0]), giving controlled but diverse composition clusters. Seed 42 (`numpy.random.default_rng`).
+- **Labels**: each of the 5 endpoints is the binary threshold (0.5) of a **latent physicochemical linear score** plus Gaussian noise. The scores use molecular-weight proxy, average Kyte–Doolittle hydropathy, net charge at pH 7, charged-residue fraction, and a per-endpoint composition tilt, with endpoint-specific weights (e.g., GI absorption penalizes long, charged, hydrophilic peptides; hERG inhibition is promoted by cationic + hydrophobic character).
+- **Provenance**: every row carries `data_origin = synthetic_demo`; the metadata file (`peptide_admet_demo.meta.json`) records the seed, label model, and a plain-English statement that the set exists to validate the pipeline, not to model real peptide ADMET.
 
-**Step 2: Property Assignment**: ADMET labels were assigned based on established computational models and physicochemical rules derived from the literature:
-
-- **GI Absorption**: Predicted using empirically derived thresholds for molecular weight (<1000 Da), hydrophobicity (GRAVY > -0.5), and hydrogen bonding capacity (<10 H-bond donors/acceptors), based on the BOILED-Egg model.[13] Sequences meeting all criteria were labeled as high absorption (1), otherwise low absorption (0).
-
-- **Caco-2 Permeability**: Determined by balancing hydrophobicity and polarity parameters using a modified version of the Caco-2 prediction model from AdmetSAR 2.0.[12] LogP > 0 and polar surface area < 140 Å² were required for permeability.
-
-- **BBB Penetration**: Based on logP (>1.5), molecular weight (<500 Da), and polar surface area (<90 Å²) criteria from the Egan et al. model.[30] Only 10.3% of generated sequences met BBB penetration criteria, reflecting the rarity of CNS-active peptides.
-
-- **Ames Mutagenicity**: Assigned using structural alerts from the Ames mutagenicity predictor in AdmetSAR 2.0, including nitro groups, aromatic amines, and specific amino acid motifs (e.g., arginine-rich sequences). Sequences with ≥2 structural alerts were labeled as mutagenic.
-
-- **hERG Inhibition**: Predicted based on cationic residues (R, K, H), hydrophobicity (logP > 2), and known structure-activity relationships from the hERG predictor in ADMETlab 3.0.[14] Sequences with >3 cationic residues and high hydrophobicity were labeled as hERG inhibitors.
-
-**Step 3: Data Quality Control**: We implemented multi-level quality control to ensure data integrity:
-
-- **Duplicate Removal**: All duplicate sequences were removed (0 duplicates found)
-- **Outlier Detection**: Sequences with extreme property values (>3 standard deviations from mean) were reviewed and removed (52 sequences removed)
-- **Balanced Label Distribution**: We applied stratified sampling to ensure reasonable class balance across all endpoints, with minimum class frequency of 10%
-
-**Data Distribution**: The final dataset exhibited realistic property distributions:
-- GI absorption: 43.6% positive (6,540 sequences)
-- Caco-2 permeability: 42.0% positive (6,300 sequences)
-- BBB penetration: 10.3% positive (1,545 sequences)
-- Ames mutagenicity: 30.4% positive (4,560 sequences)
-- hERG inhibition: 21.8% positive (3,270 sequences)
-
-**Dataset Statistics**:
-- Total sequences: 15,000
-- Sequence length range: 8-25 amino acids (mean: 16.2 ± 3.4)
-- Molecular weight range: 880-2,750 Da (mean: 1,811 ± 412 Da)
-- Hydrophobicity range: -2.1 to 3.8 (mean: 0.34 ± 1.12)
-- Net charge range: -8 to +8 (mean: 0.12 ± 2.34)
+**Resulting positive rates** (measured): GI absorption ≈ 0.14, Caco-2 permeability ≈ 0.32, BBB penetration ≈ 0.10, Ames mutagenicity ≈ 0.17, hERG inhibition ≈ 0.29. These are *by construction*, and they are what the model must learn.
 
 ### 2.2 Feature Engineering
 
-We developed a comprehensive feature representation combining sequence-based and physicochemical descriptors, optimized for peptide ADMET prediction:
+Identical in training and inference (single shared implementation):
 
-**Amino Acid Composition (AAC)**: 20-dimensional vector representing the frequency of each of the 20 standard amino acids in the peptide sequence. Calculated as:
+1. **Amino Acid Composition (AAC)** — 20: frequency of each standard amino acid.
+2. **Dipeptide Composition (DPC)** — 400: frequency of every ordered dipeptide.
+3. **Physicochemical** — 8: estimated MW (length × 110 Da), average hydropathy, hydropathy range, net charge at pH 7, pI estimate, GRAVY, hydrophobic-residue fraction, charged-residue fraction.
 
-```
-AAC_i = count(amino_acid_i) / sequence_length
-```
+Total: 428 dimensions, Z-score standardized with a scaler fit on the training split only.
 
-where i ∈ {A, C, D, E, F, G, H, I, K, L, M, N, P, Q, R, S, T, V, W, Y}. AAC captures global sequence composition and has been shown to correlate with peptide solubility, stability, and immunogenicity.[31]
+### 2.3 Model
 
-**Dipeptide Composition (DPC)**: 400-dimensional vector capturing the frequency of all possible dipeptide combinations (20 × 20 = 400). Calculated as:
+A single multi-task PyTorch MLP (defined once in `admet_model.py` and imported by both trainer and predictor, so the two can never drift apart):
 
-```
-DPC_ij = count(di peptide_ij) / (sequence_length - 1)
-```
+- Input 428 → Linear 256 → BatchNorm → ReLU → Dropout(0.2) → Linear 128 → BatchNorm → ReLU → Dropout(0.2) → 5 × Linear(1) sigmoid heads.
+- 144,133 parameters. Loss: mean of per-endpoint BCE with class weights derived from endpoint prevalence. Optimizer: Adam (lr 3e-4), `ReduceLROnPlateau` (factor 0.5, patience 3), early stopping on validation BCE (patience 8).
+- Trained on CPU. No Random Forest component; v1.0's "ensemble (RF + NN)" is retired because the shipped `nn_model.pkl` was, in fact, a second Random Forest, which we no longer ship or claim.
 
-where i, j ∈ {A, C, D, ..., Y}. DPC encodes local sequence patterns and amino acid pair interactions, providing information about secondary structure propensity, protease cleavage sites, and binding motifs. DPC has demonstrated superior performance over AAC in peptide property prediction tasks.[32]
+### 2.4 Homology-Controlled Splitting with Leakage Audit (AMPBench-MT style)
 
-**Physicochemical Properties**: 8-dimensional vector calculated from the peptide sequence:
+Following the leakage analysis in AMPBench-MT (arXiv:2607.25518):
 
-1. **Molecular Weight (MW)**: Estimated as sequence length × 110 Da (average amino acid weight). The actual molecular weight can be calculated as the sum of residue weights plus water (18 Da). MW strongly correlates with renal clearance and membrane permeability.
+1. Each sequence is assigned to its **composition family** (the generating family in §2.1; in a real dataset one would use e.g. BLAST/HHblits clustering or a fixed-similarity threshold).
+2. Families (not sequences) are allocated to train / val / test at 70 / 10 / 20, so no family appears in more than one split.
+3. A **leakage audit** is computed and shipped (`split/leakage_audit.json`): maximum pairwise Jaccard index on composition vectors between train and test families, and per-endpoint positive-rate deltas between train and test. In our run: max Jaccard = 0.250 (below the 0.5 similarity threshold of concern) and all endpoint label-rate deltas ≤ 0.013.
+4. As a **comparison**, the identical model is trained and evaluated on a plain stratified-random 70/10/20 split. The delta between the two test metrics quantifies the leakage present in the random protocol *on this dataset*.
 
-2. **Average Hydropathy (Hydro)**: Mean Kyte-Doolittle hydropathy index of all amino acids in the sequence. Calculated as:
+### 2.5 Evaluation
 
-```
-Hydro = Σ(hydropathy_i) / sequence_length
-```
+Per endpoint: AUC-ROC, Matthews correlation coefficient (MCC), accuracy, and positive rate, at threshold 0.5, computed on the held-out split only. Headline metric: **macro AUC across the 5 endpoints on the homology-controlled test set** (3,020 sequences). All numbers are written to `metrics.json` by the training script; the inference CLI reads that file and prints only measured values.
 
-where hydropathy_i is the Kyte-Doolittle value for amino acid i. Positive values indicate hydrophobicity (favorable for membrane permeability), negative values indicate hydrophilicity (favorable for solubility).
+### 2.6 Multi-Objective Composite Score
 
-3. **Hydropathy Range (Hydro_range)**: Difference between maximum and minimum hydropathy values in the sequence. Captures sequence heterogeneity and potential amphipathic character.
-
-4. **Net Charge (Charge)**: Sum of charges for all amino acids at pH 7.0. Calculated as:
-   - Positive charges: R (+1), K (+1), H (+0.1)
-   - Negative charges: D (-1), E (-1)
-   - Net charge = Σ(positive) + Σ(negative)
-
-5. **Estimated Isoelectric Point (pI)**: Simplified calculation based on acidic and basic residue ratio:
+For candidate prioritization (mirroring the multi-objective ranking in AMPGAN v3 / PepCraft generative campaigns), we define the composite score as the **geometric mean** of favorable endpoint probabilities:
 
 ```
-pI = 7.0 + (basic_residues - acidic_residues) / sequence_length × 2
+score = ( p(GI) · p(Caco-2) · p(BBB) · (1 − p(Ames)) · (1 − p(hERG)) )^(1/5)
 ```
 
-More accurate pI calculation requires titration curve analysis but is computationally expensive.
-
-6. **Grand Average of Hydropathy (GRAVY)**: Sum of hydropathy values divided by sequence length. Similar to average hydropathy but emphasizes overall hydrophobicity. GRAVY > 0 indicates hydrophobic peptides, GRAVY < 0 indicates hydrophilic peptides.
-
-7. **Hydrophobic Residue Ratio (Hydro_ratio)**: Fraction of hydrophobic amino acids (A, V, L, I, M, F, W, Y) in the sequence. Correlates with membrane permeability and protein-protein interaction propensity.
-
-8. **Charged Residue Ratio (Charge_ratio)**: Fraction of charged amino acids (D, E, R, K, H) in the sequence. High charge ratios reduce membrane permeability but improve solubility.
-
-**Feature Normalization**: All continuous features were standardized using Z-score normalization:
-
-```
-x_normalized = (x - μ) / σ
-```
-
-where μ and σ are the mean and standard deviation calculated on the training set. This prevents features with large scales (e.g., molecular weight) from dominating the model.
-
-**Total Feature Space**: 428 dimensions (20 AAC + 400 DPC + 8 physicochemical properties). This dimensionality balances information content with computational efficiency, avoiding the curse of dimensionality while capturing essential peptide characteristics.
-
-### 2.3 Model Architecture
-
-**Ensemble Strategy**: We developed an ensemble model combining Random Forest and neural network classifiers using averaging integration. The ensemble approach leverages the complementary strengths of both models: Random Forest provides robustness to high-dimensional sparse features and inherent feature importance estimation, while the neural network captures complex non-linear interactions between features.
-
-**Random Forest Component**:
-- **Number of estimators**: 100 trees (determined via cross-validation, performance plateaued beyond 100)
-- **Maximum depth**: 15 (optimized to balance bias-variance trade-off)
-- **Minimum samples split**: 2 (default)
-- **Minimum samples leaf**: 1 (default)
-- **Class weighting**: Balanced to handle imbalanced datasets (auto mode)
-- **Max features**: sqrt(428) = 21 (default for classification)
-- **Random state**: 42 for reproducibility
-- **n_jobs**: -1 (use all CPU cores)
-- **Out-of-bag (OOB) score**: Enabled for internal validation
-
-The Random Forest model uses the Gini impurity criterion for split selection and implements bagging (bootstrap aggregating) to reduce variance. Each tree is trained on a bootstrap sample of the training data, and predictions are averaged across all trees.
-
-**Neural Network Component**:
-- **Input layer**: 428 features (matching feature space dimensionality)
-- **Hidden layers**: [128, 64, 32] neurons (three layers with decreasing dimensionality)
-- **Activation functions**: ReLU (Rectified Linear Unit) for hidden layers, sigmoid for output
-- **Regularization**: 
-  - Batch Normalization after each hidden layer (improves convergence and reduces sensitivity to initialization)
-  - Dropout (0.3) after each batch normalization layer (prevents overfitting)
-- **Output layer**: 1 neuron with sigmoid activation (binary classification)
-- **Optimization**: Adam optimizer with learning rate = 0.001 (adaptive learning rate, effective for non-stationary objectives)
-- **Loss function**: Binary cross-entropy (BCEWithLogitsLoss for numerical stability)
-- **Weight initialization**: Xavier initialization for input layer, He initialization for subsequent layers
-- **Gradient clipping**: Max norm = 1.0 (prevents exploding gradients)
-
-The neural network architecture was determined through hyperparameter tuning using grid search over learning rates (0.001, 0.01, 0.0001), hidden layer sizes ([256,128,64], [128,64,32], [64,32,16]), dropout rates (0.2, 0.3, 0.5), and batch sizes (16, 32, 64). The selected architecture achieved the best validation performance.
-
-**Integration Strategy**: Final predictions obtained by averaging probabilities from both models:
-
-```
-P_ensemble = 0.5 × P_RF + 0.5 × P_NN
-```
-
-where P_RF and P_NN are the predicted probabilities from Random Forest and neural network, respectively. The equal weighting was determined via validation set optimization. Alternative integration strategies (weighted averaging, stacking) were tested but did not improve performance.
-
-**Multi-Task Learning**: The neural network is trained as a multi-task learner, with 5 parallel output heads (one for each ADMET endpoint). This approach shares representations across tasks, improving generalization through inductive transfer. The total loss is the sum of BCE losses for all 5 endpoints, with equal weighting.
-
-### 2.4 Training Protocol
-
-**Data Splitting**: We employed stratified splitting to maintain label distribution across all splits:
-- **Training set**: 64% (9,600 samples) - used for model fitting
-- **Validation set**: 16% (2,400 samples) - used for hyperparameter tuning and early stopping
-- **Test set**: 20% (3,000 samples) - held out for final evaluation (never used during training)
-
-The stratified splitting ensures that each split maintains the same class distribution as the original dataset, preventing distribution shift between splits. The random seed was set to 42 for reproducibility.
-
-**Training Configuration**:
-- **Batch size**: 32 samples per batch (balanced memory usage and gradient estimation)
-- **Epochs**: Up to 100 epochs (with early stopping based on validation loss)
-- **Device**: CPU (for reproducibility and accessibility; GPU training available but not required)
-- **Learning rate scheduling**: ReduceLROnPlateau for neural network (reduce LR by factor of 0.1 when validation loss plateaus for 5 epochs)
-- **Early stopping**: Patience = 10 epochs (stop training if validation loss does not improve for 10 consecutive epochs)
-- **Gradient accumulation**: None (standard backpropagation)
-
-**Training Procedure**:
-
-1. **Initialization**: Initialize model weights using Xavier/He initialization
-2. **Epoch loop**: For each epoch:
-   - Shuffle training data
-   - For each batch:
-     - Forward pass: Compute predictions
-     - Compute loss: Sum of BCE losses for all 5 endpoints
-     - Backward pass: Compute gradients
-     - Update weights: Apply optimizer step
-   - Compute validation loss
-   - Check early stopping criteria
-   - Save best model (lowest validation loss)
-3. **Final evaluation**: Load best model and evaluate on test set
-
-**Regularization**:
-- **Dropout (0.3)**: Randomly drops 30% of neurons during training, forcing the network to learn redundant representations
-- **Balanced class weights in Random Forest**: Automatically adjusts class weights inversely proportional to class frequencies, preventing bias toward majority class
-- **Early stopping**: Prevents overfitting by stopping training when validation performance degrades
-- **L2 regularization (weight decay = 0.0001)**: Added to neural network loss to penalize large weights
-- **Data augmentation**: Not applicable for sequence data; instead, we use synthetic data generation to increase dataset size
-
-**Cross-Validation**: We employed 5-fold stratified cross-validation for hyperparameter tuning and final model evaluation. The dataset was split into 5 folds, and each fold was used as a validation set once while the remaining 4 folds were used for training. This provides a more robust estimate of model performance and reduces variance due to data splitting.
-
-### 2.5 Evaluation Metrics
-
-We employed comprehensive evaluation metrics for binary classification, calculating metrics separately for each of the 5 ADMET endpoints:
-
-**Accuracy**: Proportion of correctly classified samples
-
-```
-Accuracy = (TP + TN) / (TP + TN + FP + FN)
-```
-
-where TP = true positives, TN = true negatives, FP = false positives, FN = false negatives. Accuracy is intuitive but can be misleading for imbalanced datasets.
-
-**Precision**: Positive predictive value - proportion of predicted positives that are truly positive
-
-```
-Precision = TP / (TP + FP)
-```
-
-High precision indicates few false positives, important for toxicity endpoints where false alarms are costly.
-
-**Recall (Sensitivity)**: True positive rate - proportion of actual positives that are correctly identified
-
-```
-Recall = TP / (TP + FN)
-```
-
-High recall indicates few false negatives, important for safety-critical endpoints like mutagenicity.
-
-**F1 Score**: Harmonic mean of precision and recall, balancing both metrics
-
-```
-F1 = 2 × (Precision × Recall) / (Precision + Recall)
-```
-
-F1 score is particularly useful for imbalanced datasets where accuracy is misleading.
-
-**AUC-ROC**: Area under the receiver operating characteristic curve, measuring the model's ability to discriminate between classes across all thresholds. AUC-ROC ranges from 0.5 (random) to 1.0 (perfect). We calculate AUC-ROC for each endpoint separately.
-
-**Per-Endpoint Analysis**: We calculate all metrics separately for each of the 5 ADMET endpoints to understand endpoint-specific performance. This is important because different endpoints may have different optimal thresholds and trade-offs.
-
-**Confusion Matrix**: We generate confusion matrices for each endpoint to visualize true/false positive/negative counts and identify specific error patterns.
-
-**Threshold Optimization**: We optimize the classification threshold (default 0.5) for each endpoint based on validation set performance, maximizing the F1 score. This accounts for class imbalance and endpoint-specific requirements.
-
-**Statistical Significance**: We perform paired t-tests comparing ensemble model performance against baseline methods (GNN, single models) across 5-fold cross-validation to assess statistical significance (p < 0.05 considered significant).
-
-### 2.6 Comparative Analysis
-
-We compared our ensemble model against a graph neural network (GNN) approach using the same feature space to isolate the impact of model architecture from feature representation quality:
-
-**GNN Architecture**:
-- **Graph construction**: Each peptide represented as a molecular graph with atoms as nodes and bonds as edges
-- **Graph neural network layers**: 3 graph convolutional layers with message passing
-- **Feature extraction**: 256-dimensional latent representation
-- **Multi-task learning heads**: 5 parallel output heads (one for each ADMET endpoint)
-- **Total parameters**: 275,461 (vs. ~50,000 for ensemble model)
-- **Optimization**: Adam optimizer with learning rate = 0.001
-- **Training epochs**: 100 (with early stopping)
-- **Batch size**: 32
-
-**Comparison Protocol**:
-1. Both models trained on identical training/validation/test splits
-2. Both models use the same 428-dimensional feature space (AAC + DPC + physchem)
-3. Performance evaluated on held-out test set (3,000 samples)
-4. Statistical significance assessed via paired t-tests across 5-fold CV
-
-**Baseline Methods**: We also compare against single model baselines:
-- Random Forest alone (no neural network)
-- Neural network alone (no Random Forest)
-- Simple averaging of AAC features only (no DPC, no physchem)
-
-This comprehensive comparison isolates the contributions of ensemble strategy, feature representation, and model architecture to overall performance.
+The geometric mean penalizes any single poor endpoint (a candidate that is well-absorbed but hERG-positive scores low), which matches the "no fatal flaw" logic used when ranking generated peptide candidates before experimental testing.
 
 ---
 
 ## 3. Results
 
-### 3.1 Model Performance
+### 3.1 Measured Performance
 
-**Ensemble Model Performance on Test Set (3,000 samples)**:
+All values below are taken from `peptide_admet_model/metrics.json` produced by the released training script.
 
-| Metric | Value |
-|--------|-------|
-| Overall Accuracy | **0.9770** |
-| Precision | **0.9909** |
-| Recall | **0.9582** |
-| F1 Score | **0.9743** |
-| AUC-ROC | **0.9987** |
+**Homology-controlled test split (headline; 3,020 sequences):**
 
-**Per-Endpoint Performance**:
+| Endpoint | AUC | MCC | Accuracy | Positive rate |
+|---|---|---|---|---|
+| GI absorption | 0.8810 | 0.4457 | 0.8037 | 0.132 |
+| Caco-2 permeability | 0.8882 | 0.5930 | 0.8094 | 0.319 |
+| BBB penetration | 0.9070 | 0.4575 | 0.8367 | 0.105 |
+| Ames mutagenicity | 0.8011 | 0.3418 | 0.7016 | 0.171 |
+| hERG inhibition | 0.8645 | 0.5261 | 0.7665 | 0.299 |
+| **Macro AUC** | **0.8684** | — | **mean 0.7836** | — |
 
-| Endpoint | Accuracy | Interpretation |
-|----------|----------|----------------|
-| GI Absorption | 0.9770 | Excellent |
-| Caco-2 Permeability | 0.9891 | Outstanding |
-| BBB Penetration | 0.9847 | Outstanding |
-| Ames Mutagenicity | 0.9727 | Excellent |
-| hERG Inhibition | 0.9791 | Excellent |
+**Homology-controlled validation split:** macro AUC 0.8705 (per-endpoint AUC 0.8568–0.9200).
 
-### 3.2 Comparative Analysis: Ensemble vs. GNN
+### 3.2 Dual-Split Comparison (the leakage question)
 
-| Model | Overall Accuracy | GI Absorption | Caco-2 | BBB | Ames | hERG |
-|-------|-----------------|---------------|--------|-----|------|------|
-| **Ensemble (RF+NN)** | **0.9770** | **0.9770** | **0.9891** | **0.9847** | **0.9727** | **0.9791** |
-| GNN (simplified) | 0.3283 | 0.5637 | 0.5717 | -0.0097 | 0.0139 | 0.0819 |
-| **Difference** | **+0.6487** | **+0.4133** | **+0.4174** | **+0.9944** | **+0.9588** | **+0.8972** |
+| Protocol | Macro AUC (test) | Mean accuracy |
+|---|---|---|
+| Homology-controlled (headline) | 0.8684 | 0.7836 |
+| Stratified random (comparison) | 0.8688 | 0.7850 |
+| **Delta (random − homology)** | **+0.0004** | +0.0014 |
 
-**Key Finding**: The ensemble model outperforms the GNN approach by 64.87% in overall accuracy, demonstrating the superiority of ensemble learning with handcrafted features for peptide ADMET prediction with moderate training data.
+The near-zero delta is informative in both directions. On *this* demo set, the random split leaks almost nothing because the 10,000 composition families are spread thinly enough that a random draw rarely re-presents the exact same composition region with strong overlap. The protocol matters — and must be audited — precisely when families are large or the dataset is built by mutating a small seed set, which is the regime where AMPBench-MT documents inflation. We ship the audit so the reader can check the regime, rather than trusting an unexamined split.
 
-### 3.3 Feature Importance Analysis
+### 3.3 Why the Numbers Are 0.8–0.9, Not 0.99
 
-**Top 5 Most Important Features** (Random Forest):
+The labels are, by construction, noisy thresholded linear functions of a handful of physicochemical features. A model restricted to composition-level features can in principle recover most of that signal, and the residual 0.1–0.2 AUC gap to 1.0 is exactly the label noise plus the information lost by discarding sequence *order* (DPC captures only bigram frequency, not context). We consider this agreement between label-model complexity and measured performance the strongest evidence that the pipeline is honest: the model is neither overfitting (homology ≈ random) nor underfitting (AUC well above 0.5 at every endpoint).
 
-1. **AAC_P** (Proline composition): Importance = 0.089
-2. **AAC_G** (Glycine composition): Importance = 0.082
-3. **DPC_PP** (Pro-Pro dipeptide): Importance = 0.075
-4. **DPC_GP** (Gly-Pro dipeptide): Importance = 0.068
-5. **Molecular Weight**: Importance = 0.062
+### 3.4 Multi-Objective Ranking (demo)
 
-**Interpretation**: Proline and glycine content are particularly influential for peptide ADMET properties, likely due to their unique structural effects (proline introduces rigidity, glycine provides flexibility).
-
-**Endpoint-Specific Important Features**:
-- **GI Absorption**: Molecular weight, hydrophobicity ratios
-- **BBB Penetration**: Average hydropathy, net charge
-- **Caco-2 Permeability**: Charged residue ratio, GRAVY
-- **Ames Mutagenicity**: Specific dipeptide motifs
-- **hERG Inhibition**: Cationic residue content, hydrophobicity
-
-### 3.4 Training Efficiency
-
-| Metric | Ensemble Model | GNN Model |
-|--------|---------------|-----------|
-| Training Time | ~5 minutes | ~30 minutes |
-| Parameters | ~50,000 | 275,461 |
-| Memory Usage | Low | Moderate |
-| Convergence | Rapid | Slower |
-
-The ensemble model achieves superior performance with significantly faster training and fewer parameters.
+Ranking the five demo sequences in `test_sequences.txt` by composite score separates the clearly hydrophobic, uncharged candidate (top; high GI/Caco-2/BBB probabilities but elevated hERG probability pulling the geometric mean down) from the strongly charged candidates (bottom; poor permeability). The ranking behaves qualitatively as the literature would predict for passive permeability, which is the intended use of the demo set.
 
 ---
 
 ## 4. Discussion
 
-### 4.1 Why Ensemble Learning Outperforms GNN
+### 4.1 What this contribution is
 
-Our results demonstrate that ensemble learning with handcrafted features significantly outperforms GNN approaches for peptide ADMET prediction. Several factors contribute to this finding:
+A **reproducibility and evaluation-protocol contribution**: a regenerable dataset, an audited homology-controlled split, a shared model definition, and measured-only metrics, packaged so that every number in the paper is re-derivable from the repository. It is *not* a claim of real-peptide ADMET accuracy, and the abstract, TOC, and repository documentation are written to that standard.
 
-**Feature Quality**: The 428-dimensional feature space (AAC + DPC + physicochemical properties) captures essential peptide characteristics more effectively than simplified graph representations. Dipeptide composition, in particular, encodes local sequence patterns that are critical for ADMET properties.
+### 4.2 Relation to 2026 work
 
-**Data Efficiency**: Ensemble methods like Random Forest are less data-hungry than deep learning approaches. With only 15,000 training samples, the ensemble model achieves 97.70% accuracy, while the GNN struggles with only 32.83% accuracy.
+- **AMPBench-MT (arXiv:2607.25518)**: our split + audit implements the leakage controls it advocates for AMP/ADMET evaluation; our §3.2 reports the split-protocol delta it calls for.
+- **AMPGAN v3 / PepCraft (arXiv, 2026-06)**: their generative campaigns rank candidates by multi-objective criteria tied to experimental MIC; our composite score (§2.6) is the in-silico analogue for a 5-endpoint ADMET panel.
+- **ApexGO (Nat. Mach. Intell., 2026-05)**: generative redesign of antibiotic molecules with honest validation gates — the same "validate before claiming" stance we adopt.
+- **Integrated agentic peptide pipelines (npj Drug Discovery, 2026-05)**: end-to-end campaigns that combine LLM-planned experiments with ML models; our pipeline is deliberately simple and fully deterministic so it can serve as a *verification baseline* inside such campaigns.
+- **Genotypic Triggers (2026-08)**: shows safety blind spots arise from missing pharmacogenomic endpoint dimensions; we add toxicogenomics endpoints to the roadmap rather than silently omitting them.
 
-**Model Robustness**: The averaging integration strategy provides robustness by combining the strengths of both models. Random Forest excels at handling high-dimensional sparse features, while the neural network captures non-linear interactions.
+### 4.3 Practical guidance we recommend
 
-**Computational Efficiency**: The ensemble model trains 6x faster and requires fewer parameters, making it more practical for high-throughput screening applications.
-
-### 4.2 Peptide-Specific Considerations
-
-**Sequence Length Effects**: The model performs best for peptides in the 8-25 amino acid range, which represents the majority of peptide drugs. Performance may degrade for very short (<5 aa) or very long (>30 aa) peptides.
-
-**Amino Acid Bias**: Proline and glycine emerge as particularly important, consistent with their unique structural roles. Proline's rigidity affects membrane permeability, while glycine's flexibility influences metabolic stability.
-
-**Class Imbalance**: The dataset exhibits natural class imbalance, particularly for BBB penetration (10.3% positive). The balanced class weighting in Random Forest and careful threshold selection help mitigate this challenge.
-
-### 4.3 Comparison with Existing Methods
-
-**vs. AdmetSAR 2.0**: Our model achieves higher accuracy (97.70% vs. ~82%) but with fewer endpoints (5 vs. 18). The trade-off favors our model for peptide-specific predictions.
-
-**vs. SwissADME**: Our model demonstrates superior accuracy (97.70% vs. ~78%) and AUC-ROC (0.9987 vs. ~0.80).
-
-**vs. ADMETlab 3.0**: While ADMETlab 3.0 offers 119 endpoints, its performance is optimized for small molecules. Our peptide-specific model achieves 97.70% accuracy compared to ADMETlab's ~84% for similar tasks.
-
-**vs. pepADMET GNN**: Our ensemble approach achieves 64.87% higher accuracy than the GNN implementation using equivalent feature representations.
+1. Ship the dataset (or its exact generator) with the code — never reference a CSV the repository does not contain.
+2. Audit and publish the split's leakage (similarity statistics + label-rate deltas), not just its stratification.
+3. Use one shared model class for training and inference; release `metrics.json` and have the CLI print measured values only.
+4. Report the random-vs-controlled-split delta whenever the dataset contains near-duplicate or family-structured sequences.
 
 ### 4.4 Limitations
 
-**Synthetic Data**: The model was trained on synthetic data with realistic distributions rather than experimental measurements. While the distributions reflect known peptide characteristics, experimental validation is needed.
+1. **Synthetic labels.** Every number here measures the pipeline, not biology. Real-peptide performance must be re-measured on experimental data before any accuracy claim.
+2. **Five endpoints only.** No toxicogenomic / pharmacogenomic, immunogenicity, or protease-stability endpoints (the blind-spot class documented by Genotypic Triggers).
+3. **Composition-level features.** AAC/DPC discard order beyond bigrams; sequence-order-sensitive properties (protease cleavage context, local membrane-interaction motifs) are out of reach for this model class.
+4. **Length range.** The demo set spans 10–30 aa; behavior outside that range is unvalidated.
+5. **No wet-lab validation.** Nothing here has been confirmed experimentally.
 
-**Endpoint Coverage**: The model predicts only 5 ADMET endpoints. Additional endpoints (plasma protein binding, volume of distribution, half-life, etc.) would provide more comprehensive ADMET profiling.
+### 4.5 Future directions
 
-**Sequence Length Range**: Performance is optimized for 8-25 amino acid peptides. Extrapolation beyond this range may reduce accuracy.
-
-**Interpretability**: While feature importance provides some interpretability, the neural network component remains a "black box" compared to pure tree-based methods.
-
-### 4.5 Future Directions
-
-**Experimental Validation**: Collecting real experimental ADMET data for peptides would enable retraining and validation with ground-truth measurements.
-
-**Extended Endpoint Coverage**: Expanding to 18+ endpoints (following AdmetSAR 2.0) would provide more comprehensive ADMET profiling.
-
-**Transfer Learning**: Leveraging pre-trained protein language models (ESM-2, ProtBERT) could improve feature representations and performance.
-
-**Multi-Task Learning**: Joint optimization across all 5 endpoints could improve generalization through shared representations.
-
-**Active Learning**: Implementing active learning strategies would minimize experimental data requirements by selectively querying the most informative samples.
+Retrain on licensed experimental peptide ADMET data with the *same* split/audit/reporting protocol; extend features with a frozen protein-language-model embedding (e.g., ProtGPT2-style soft-prompt embeddings as used in the npj Drug Discovery 2026 pipeline) or a GNN backbone for order sensitivity; add toxicogenomic and stability endpoints; and expose the composite score as an objective for generative peptide design in the AMPGAN v3 / PepCraft style.
 
 ---
 
 ## 5. Conclusions
 
-We have developed and validated a high-performance ensemble machine learning model for peptide ADMET property prediction. Our approach combines amino acid composition, dipeptide composition, and physicochemical properties into a 428-dimensional feature space, integrated through Random Forest and neural network classifiers.
+We replaced a submission package whose metrics could not be reproduced from its artifacts with a fully reproducible pipeline: a regenerable synthetic demo set with provenance, an AMPBench-MT-style homology-controlled split with a shipped leakage audit, and a shared multi-task PyTorch MLP whose measured performance (macro AUC 0.8684, mean accuracy 0.7836, on the homology-controlled split; 0.8688 random) we report without inflation. The near-parity between split protocols on this dataset, together with the audit, is our central demonstration: peptide ADMET numbers should be reported with their split provenance, and honest numbers on a demo set are the appropriate claim until real data arrive.
 
-**Key Achievements**:
-- **97.70% overall accuracy** across five critical ADMET endpoints
-- **0.9987 AUC-ROC**, demonstrating excellent discriminative power
-- **64.87% improvement** over GNN approaches with equivalent features
-- **Rapid training** (~5 minutes) suitable for high-throughput applications
-- **Comprehensive validation** on 3,000 test samples
-
-**Applications**:
-- Early-stage peptide drug screening and prioritization
-- Lead optimization by predicting ADMET properties of peptide analogs
-- Reducing experimental burden by computationally filtering poor candidates
-- Complementing experimental ADMET studies with in silico predictions
-
-**Availability**: The model, training code, and inference tools are available at [GitHub repository URL](https://github.com/c00jsw00/openclaw-peptide-admet) for the research community.
-
-This work demonstrates that ensemble learning with optimized peptide feature representations provides a powerful, efficient, and accurate approach for peptide ADMET prediction, addressing a critical need in peptide drug discovery and development.
+**Availability**: all code, the trained model (144,133 parameters), the scaler, and `metrics.json` are at https://github.com/c00jsw00/openclaw-peptide-admet.
 
 ---
 
 ## 6. Acknowledgments
 
-We thank the OpenClaw Team for computational resources and technical support. We acknowledge the peptide drug development community for inspiring this research.
+We acknowledge the AMPBench-MT authors and the 2026 generative-AMP communities for the evaluation-integrity standards adopted here.
 
 ---
 
 ## 7. References
 
-1. **Hermans, R.M., et al.** (2020). Peptide therapeutics: current status and future directions. *Drug Discovery Today*, 25(1), 125-135.
+(1–17 as in v1.0, condensed: peptide therapeutics background, ADMET tool literature, classical QSAR/deep-learning comparisons.)
 
-2. **Masucci, J.A., et al.** (2020). Emerging modalities: the rise of peptide drugs. *Nature Reviews Drug Discovery*, 19(7), 437-438.
-
-3. **Lau, J.L., et al.** (2015). Peptides toward clinical practice: from manual synthesis to library production. *Chemical Reviews*, 115(8), 2885-2944.
-
-4. **Windbergs, M., et al.** (2020). Oral bioavailability of peptides: overcoming the permeability barrier. *Advanced Drug Delivery Reviews*, 162, 1-15.
-
-5. **Dormer, N., et al.** (2019). Blood-brain barrier penetration of peptide therapeutics. *Journal of Controlled Release*, 307, 225-238.
-
-6. **Beck-Sickinger, A.G., et al.** (2017). Peptide drug delivery to the brain. *Advanced Drug Delivery Reviews*, 118, 1-3.
-
-7. **Lakshmanan, M., et al.** (2020). Metabolic stability of peptide drugs: challenges and strategies. *European Journal of Medicinal Chemistry*, 197, 112345.
-
-8. **Guggenbichler, S., et al.** (2021). Peptide degradation by proteases: mechanisms and inhibition strategies. *Biochemical Pharmacology*, 185, 114398.
-
-9. **van de Waterbeemd, H., et al.** (1998). Estimation of renal clearance of peptides. *Journal of Medicinal Chemistry*, 41(10), 1647-1652.
-
-10. **Polak, P., et al.** (2020). hERG channel inhibition by peptide therapeutics: risks and mitigation. *Journal of Pharmacological and Toxicological Methods*, 104, 106829.
-
-11. **Arbiser, J.L., et al.** (2019). Cytotoxicity assessment of peptide drugs. *Toxicology in Vitro*, 59, 1-9.
-
-12. **Wang, X., et al.** (2019). AdmetSAR 2.0: web-service for prediction and optimization of chemical ADMET properties. *Bioinformatics*, 35(6), 1067-1069.
-
-13. **Daina, A., et al.** (2017). SwissADME: a free web tool to evaluate pharmacokinetics, drug-likeness and medicinal chemistry friendliness of small molecules. *Scientific Reports*, 7, 42717.
-
-14. **Robinson, M., et al.** (2020). ADMETlab 3.0: prediction and optimization of chemical ADMET properties. *Nucleic Acids Research*, 48(W1), W460-W466.
-
-15. **Pei, Y., et al.** (2021). pepADMET: AI-driven platform for peptide ADMET prediction. *Bioinformatics*, 37(15), 2234-2241.
-
-16. **Rives, A., et al.** (2021). Biological structure and function emerge from scaling unsupervised learning to 250 million protein sequences. *PNAS*, 118(15), e2016239118.
-
-17. **Stark, H., et al.** (2021). Protein structure prediction using deep learning. *Nature Methods*, 18(6), 605-612.
+18. **AMPBench-MT**: Multi-task benchmarking for antimicrobial peptide prediction: the case for homology-controlled evaluation. *arXiv:2607.25518* (2026).
+19. **AMPGAN v3 / PepCraft**: Generative redesign of antimicrobial peptides with multi-objective candidate ranking and wet-lab MIC validation. *arXiv* (2026).
+20. **ApexGO**: Generative redesign of antibiotic scaffolds with validation-gated evaluation. *Nature Machine Intelligence* (2026-05).
+21. **Integrated agentic peptide-discovery pipeline** (ProtGPT2 soft-prompt integration, LLM-planned experiments). *npj Drug Discovery* (2026-05).
+22. **Genotypic Triggers**: pharmacogenomic "back doors" as a safety blind spot in polypharmacy risk prediction. (2026-08).
 
 ---
 
 ## Supporting Information Available
 
-The following files are available free of charge at [GitHub repository URL](https://github.com/c00jsw00/openclaw-peptide-admet):
-
-- **S1. Training Data Statistics**: Detailed dataset composition and property distributions
-- **S2. Feature Correlation Analysis**: Correlation matrix and feature relationships
-- **S3. Model Code**: Complete training and inference code
-- **S4. Trained Model Weights**: Pre-trained model files for immediate use
-- **S5. Example Predictions**: Sample predictions for test peptides
+- **S1.** `data/peptide_admet_demo.meta.json` — dataset provenance and label model.
+- **S2.** `data/split/leakage_audit.json` — split leakage audit (max Jaccard, endpoint label-rate deltas).
+- **S3.** `peptide_admet_model/metrics.json` — all measured per-endpoint metrics, both splits.
+- **S4.** Example predictions for `test_sequences.txt` (composite-score ranking).
 
 ---
 
 ## Author Information
 
-**Corresponding Author**
-*Pinwan (品丸)*
-OpenClaw Team
-Email: [contact information]
+**Corresponding Author**: Pinwan (品丸), OpenClaw Team.
 
-**Author Contributions**
-- **Pinwan**: Model development, data analysis, manuscript writing
-- **OpenClaw Team**: Code implementation, validation, technical support
+**Data and Code Availability**: https://github.com/c00jsw00/openclaw-peptide-admet
 
-**Competing Interests**
-The authors declare no competing interests.
-
-**Funding**
-This research was conducted using OpenClaw computational resources.
-
-**Data and Code Availability**
-Training data, model weights, and code are available at: https://github.com/c00jsw00/openclaw-peptide-admet
+**Submission positioning**: benchmark / reproducibility-protocol contribution. We do **not** recommend submitting this as a "real-peptide accuracy" paper; the appropriate venue framing is a methods/benchmark article (e.g., JCIM's benchmark track or a workshop on ML evaluation integrity) pending real-data retraining.
 
 ---
 
-**Manuscript prepared**: 2026-03-24  
-**Version**: 1.0  
-**Status**: Ready for submission to *Journal of Chemical Information and Modeling (JCIM)*
+**Manuscript prepared**: 2026-08-24
+**Version**: 2.0 (integrity revision; replaces 2026-03-24 v1.0)
+**Status**: internally consistent; submission framing adjusted per §"Submission positioning"

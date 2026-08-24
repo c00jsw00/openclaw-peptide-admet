@@ -1,3 +1,14 @@
+# DEPRECATED — SUPERSEDED (2026-08-24)
+
+> **Do not use or submit this file.** This is the v1.0 manuscript
+> (2026-03-24) whose reported metrics (97.70% accuracy, 0.9987 AUC,
+> "15,000 real peptides", RF+NN ensemble) could not be reproduced from the
+> repository's artifacts. It is retained only for version history.
+>
+> **Use `peptide_admet_manuscript_jcim.md` (v2.0, integrity revision) instead.**
+
+---
+
 # Development and Validation of an Ensemble Machine Learning Model for Peptide ADMET Property Prediction
 
 **Running Title:** Ensemble ML for Peptide ADMET Prediction

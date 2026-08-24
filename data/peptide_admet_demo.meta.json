@@ -1,0 +1,16 @@
+{
+  "n_samples": 15000,
+  "seed": 42,
+  "n_families": 200,
+  "feature_dim": 428,
+  "feature_layout": "20 AAC + 400 DPC + 8 physchem (same as PeptideFeatureExtractor)",
+  "endpoints": [
+    "GI_absorption",
+    "Caco2_permeability",
+    "BBB_penetration",
+    "Ames_mutagenicity",
+    "hERG_inhibition"
+  ],
+  "label_model": "latent physicochemical linear scores + Gaussian noise; labels = score > 0",
+  "data_origin": "synthetic_demo (NOT experimental data)"
+}

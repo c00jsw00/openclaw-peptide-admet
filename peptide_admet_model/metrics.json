@@ -1,0 +1,190 @@
+{
+  "model": "ADMETMLP (PyTorch MLP, per-endpoint binary heads)",
+  "n_params": 144133,
+  "input_dim": 428,
+  "feature_layout": "20 AAC + 400 DPC + 8 physchem",
+  "training": {
+    "epochs": 60,
+    "early_stopping": "val BCE, patience 8",
+    "pos_weights": [
+      5.87,
+      2.045,
+      8.58,
+      5.081,
+      2.457
+    ],
+    "seed": 42
+  },
+  "data": {
+    "csv": "data/peptide_admet_demo.csv",
+    "n_samples": 15000,
+    "data_origin": "synthetic_demo",
+    "provenance": "SYNTHETIC DEMO DATA. Labels come from a latent physicochemical model in prepare_data.py; they are NOT experimental measurements."
+  },
+  "splits": {
+    "primary": {
+      "name": "homology-controlled",
+      "method": "greedy single-linkage 3-mer Jaccard clustering, family-level split (AMPBench-MT-style homology control, arXiv:2607.25518)",
+      "counts": {
+        "train": 10490,
+        "val": 1504,
+        "test": 3006
+      },
+      "audit": {
+        "csv": "data/peptide_admet_demo.csv",
+        "threshold": 0.5,
+        "fractions": {
+          "train": 0.7,
+          "val": 0.1,
+          "test": 0.2
+        },
+        "seed": 42,
+        "n_families": 14481,
+        "counts": {
+          "train": 10490,
+          "val": 1504,
+          "test": 3006
+        },
+        "max_train_test_kmer_jaccard_audited": 0.25,
+        "max_endpoint_rate_gap": 0.0135,
+        "method": "greedy single-linkage 3-mer Jaccard clustering, family-level split (AMPBench-MT-style homology control, arXiv:2607.25518)"
+      },
+      "val": {
+        "GI_absorption": {
+          "auc": 0.8568,
+          "mcc": 0.4269,
+          "accuracy": 0.7892,
+          "n": 1504,
+          "pos_rate": 0.1383
+        },
+        "Caco2_permeability": {
+          "auc": 0.889,
+          "mcc": 0.5824,
+          "accuracy": 0.8052,
+          "n": 1504,
+          "pos_rate": 0.3398
+        },
+        "BBB_penetration": {
+          "auc": 0.92,
+          "mcc": 0.4897,
+          "accuracy": 0.8384,
+          "n": 1504,
+          "pos_rate": 0.1051
+        },
+        "Ames_mutagenicity": {
+          "auc": 0.8184,
+          "mcc": 0.3964,
+          "accuracy": 0.734,
+          "n": 1504,
+          "pos_rate": 0.1782
+        },
+        "hERG_inhibition": {
+          "auc": 0.8684,
+          "mcc": 0.4805,
+          "accuracy": 0.746,
+          "n": 1504,
+          "pos_rate": 0.2879
+        },
+        "MACRO": {
+          "auc": 0.8705
+        }
+      },
+      "test": {
+        "GI_absorption": {
+          "auc": 0.881,
+          "mcc": 0.4457,
+          "accuracy": 0.8037,
+          "n": 3006,
+          "pos_rate": 0.1321
+        },
+        "Caco2_permeability": {
+          "auc": 0.8882,
+          "mcc": 0.593,
+          "accuracy": 0.8094,
+          "n": 3006,
+          "pos_rate": 0.3194
+        },
+        "BBB_penetration": {
+          "auc": 0.907,
+          "mcc": 0.4575,
+          "accuracy": 0.8367,
+          "n": 3006,
+          "pos_rate": 0.1051
+        },
+        "Ames_mutagenicity": {
+          "auc": 0.8011,
+          "mcc": 0.3418,
+          "accuracy": 0.7016,
+          "n": 3006,
+          "pos_rate": 0.1713
+        },
+        "hERG_inhibition": {
+          "auc": 0.8645,
+          "mcc": 0.5261,
+          "accuracy": 0.7665,
+          "n": 3006,
+          "pos_rate": 0.2987
+        },
+        "MACRO": {
+          "auc": 0.8684
+        }
+      }
+    },
+    "comparison": {
+      "name": "random stratified 70/10/20",
+      "note": "reported to show the homology-control delta; random-split numbers are inflated by near-duplicate leakage",
+      "counts": {
+        "train": 10499,
+        "val": 3375,
+        "test": 1126
+      },
+      "test": {
+        "GI_absorption": {
+          "auc": 0.8857,
+          "mcc": 0.485,
+          "accuracy": 0.8215,
+          "n": 1126,
+          "pos_rate": 0.1572
+        },
+        "Caco2_permeability": {
+          "auc": 0.8857,
+          "mcc": 0.5994,
+          "accuracy": 0.8135,
+          "n": 1126,
+          "pos_rate": 0.3357
+        },
+        "BBB_penetration": {
+          "auc": 0.8896,
+          "mcc": 0.4509,
+          "accuracy": 0.833,
+          "n": 1126,
+          "pos_rate": 0.1101
+        },
+        "Ames_mutagenicity": {
+          "auc": 0.8217,
+          "mcc": 0.4189,
+          "accuracy": 0.7629,
+          "n": 1126,
+          "pos_rate": 0.1714
+        },
+        "hERG_inhibition": {
+          "auc": 0.8615,
+          "mcc": 0.5207,
+          "accuracy": 0.7682,
+          "n": 1126,
+          "pos_rate": 0.2975
+        },
+        "MACRO": {
+          "auc": 0.8688
+        }
+      }
+    }
+  },
+  "headline": {
+    "primary_macro_auc": 0.8684,
+    "comparison_macro_auc": 0.8688,
+    "homology_control_delta": 0.0004
+  },
+  "generated_at": "2026-08-24 21:56:27",
+  "elapsed_s": 12.5
+}
