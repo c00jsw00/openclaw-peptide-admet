@@ -7,13 +7,13 @@
     "test": 0.2
   },
   "seed": 42,
-  "n_families": 29492,
+  "n_families": 29497,
   "counts": {
-    "train": 20996,
-    "val": 3012,
-    "test": 5992
+    "train": 20999,
+    "val": 3013,
+    "test": 5993
   },
-  "max_train_test_kmer_jaccard_audited": 0.3077,
-  "max_endpoint_rate_gap": 0.0169,
+  "max_train_test_kmer_jaccard_audited": 0.1905,
+  "max_endpoint_rate_gap": 0.0138,
   "method": "greedy single-linkage 3-mer Jaccard clustering, family-level split (AMPBench-MT-style homology control, arXiv:2607.25518)"
 }

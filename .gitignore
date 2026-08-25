@@ -55,6 +55,11 @@ model_checkpoints/
 logs/
 tensorboard/
 
+# Local A/B baseline artifacts (30k-only model weights kept out of the repo;
+# the small metrics_30k_only.json baseline IS committed as comparison evidence)
+data/model_30k_only/
+data/peptaloid_sequences.txt
+
 # GitHub
 .github/
 

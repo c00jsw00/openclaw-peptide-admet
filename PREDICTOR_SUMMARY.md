@@ -76,22 +76,31 @@ python peptide_admet_predictor.py --sequences test_sequences.txt --rank
 
 ---
 
-## 📊 實測性能(30k 訓練,同源性控制測試分割 5,992 序列)
+## 📊 實測性能(30k + 5 Peptaloid 訓練,同源性控制測試分割 5,993 序列)
 
 | 端點 | 類型 | 主指標 | 其他 | 已標註(%) |
 |------|------|--------|------|-----------|
-| GI_absorption | binary | AUC **0.8857** | MCC 0.4529, Acc 0.8092 | 100% |
-| Caco2_permeability | binary | AUC **0.8831** | MCC 0.6135, Acc 0.8176 | 100% |
-| BBB_penetration | binary | AUC **0.9042** | MCC 0.4640, Acc 0.8402 | 100% |
-| Ames_mutagenicity | binary | AUC **0.8052** | MCC 0.3482, Acc 0.7067 | 100% |
-| hERG_inhibition | binary | AUC **0.8602** | MCC 0.5375, Acc 0.7744 | 100% |
-| toxicity_binary | binary | AUC **0.8268** | MCC 0.1225, Acc 0.7522 | 100% |
-| toxicity_type | multiclass(6) | macro-F1 **0.3701** | acc 0.7402 | 100% |
-| neurotoxicity_type | multiclass(4) | macro-F1 **0.3898** | acc 0.7477 | 12.6% |
-| HC50 | regression | R² **0.5937** | RMSE 0.5058 | 30% |
-| **平均主指標** | — | **0.7189** | 隨機分割對照 0.7227(delta −0.0038) | — |
+| GI_absorption | binary | AUC **0.8823** | MCC 0.4366, Acc 0.8004 | 100% |
+| Caco2_permeability | binary | AUC **0.9081** | MCC 0.6210, Acc 0.8295 | 100% |
+| BBB_penetration | binary | AUC **0.9317** | MCC 0.5203, Acc 0.8537 | 100% |
+| Ames_mutagenicity | binary | AUC **0.8399** | MCC 0.4284, Acc 0.7587 | 100% |
+| hERG_inhibition | binary | AUC **0.8703** | MCC 0.5215, Acc 0.7776 | 100% |
+| toxicity_binary | binary | AUC **0.8365** | MCC 0.4827, Acc 0.7576 | 100% |
+| toxicity_type | multiclass(6) | macro-F1 **0.2201** | acc 0.7047 | 100% |
+| neurotoxicity_type | multiclass(4) | macro-F1 **0.3649** | acc 0.3794 | 21.9% |
+| HC50 | regression | R² **0.6525** | RMSE 0.3184, MAE 0.2541 | 59.6% |
+| **平均主指標** | — | **0.7229** | 隨機分割對照 0.7140(delta −0.0089) | — |
 
-對照:15k 訓練時平均主指標 0.6929、HC50 R² 0.4610 → **加大訓練集實測有效**。
+對照:15k 訓練時平均主指標 0.6929、HC50 R² 0.4610;30k(純合成)平均主指標
+0.7189、HC50 R² 0.6100 → **加大訓練集實測有效**。
+
+**Peptaloid 首次外部數據攝入(誠實說明):** 從
+[Peptaloid-database](https://github.com/Bibhuprasadbehera/Peptaloid-database)
+的 193 個唯一化合物(SMILES-only、無序列欄)中,經 RDKit 還原 + 20-氨基酸過濾,
+淨貢獻 **5 條序列**(佔 30,005 的 0.017%),標籤為「連續預測值取中位數二值化」
+(低信任,非實驗量測)。其對平均主指標的貢獻(+0.0040)在訓練雜訊範圍內,
+目的是驗證 `--merge` 真實外部數據路徑端對端可用;要有意義地移動指標,需要
+數千條(而非 5 條)帶顯式序列的真實數據。
 
 > ⚠️ **這些數字描述的是示範管線,不是真實肽類性能。**
 > `toxicity_type` 的 macro-F1 偏低是類別不平衡(class 0 佔多數)的誠實結果,

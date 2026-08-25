@@ -69,50 +69,57 @@ following the multi-objective candidate ranking used by AMPGAN v3 / PepCraft
 
 ## 🎯 Performance (measured, this run)
 
-Measured on the **homology-controlled test split** (5,992 sequences; 30,000-row
-training set, 20,996 train / 3,012 val). The "primary metric" per endpoint is
-AUC (binary), macro-F1 (multiclass), or R² (regression).
+Measured on the **homology-controlled test split** (5,993 sequences; 30,005-row
+training set = 30,000 `synthetic_demo` + 5 `peptaloid_db` rows; 20,999 train /
+3,013 val). The "primary metric" per endpoint is AUC (binary), macro-F1
+(multiclass), or R² (regression).
 
 | Metric | Value |
 |--------|-------|
-| **Mean primary metric (headline)** | **0.7189** |
-| Random-split mean metric (comparison) | 0.7227 |
-| Homology-vs-random delta | +0.0038 |
+| **Mean primary metric (headline)** | **0.7229** |
+| Random-split mean metric (comparison) | 0.7140 |
+| Homology-vs-random delta | −0.0089 |
 | Model params | 145,681 |
 
-### Per-Endpoint (homology-controlled test split, 30k run)
+### Per-Endpoint (homology-controlled test split, 30k + 5 Peptaloid run)
 
 | Endpoint | Type | Primary metric | Other | n labelled |
 |----------|------|---------------|-------|-----------|
-| GI Absorption | binary | **AUC 0.8864** | MCC 0.4580, Acc 0.8141 | 5,992 |
-| Caco-2 Permeability | binary | **AUC 0.9105** | MCC 0.6257, Acc 0.8258 | 5,992 |
-| BBB Penetration | binary | **AUC 0.9368** | MCC 0.5433, Acc 0.8652 | 5,992 |
-| Ames Mutagenicity | binary | **AUC 0.8415** | MCC 0.4420, Acc 0.7710 | 5,992 |
-| hERG Inhibition | binary | **AUC 0.8723** | MCC 0.5194, Acc 0.7714 | 5,992 |
-| toxicity_binary | binary | **AUC 0.8392** | MCC 0.4856, Acc 0.7537 | 5,992 |
-| toxicity_type | multiclass (6) | **macro-F1 0.2208** | Acc 0.7034 | 5,992 |
-| neurotoxicity_type | multiclass (4) | **macro-F1 0.3525** | Acc 0.3847 | 1,297 (partial) |
-| HC50 | regression | **R² 0.6100** | RMSE 0.3386, MAE 0.2680 | 3,589 (partial) |
+| GI Absorption | binary | **AUC 0.8823** | MCC 0.4366, Acc 0.8004 | 5,993 |
+| Caco-2 Permeability | binary | **AUC 0.9081** | MCC 0.6210, Acc 0.8295 | 5,993 |
+| BBB Penetration | binary | **AUC 0.9317** | MCC 0.5203, Acc 0.8537 | 5,993 |
+| Ames Mutagenicity | binary | **AUC 0.8399** | MCC 0.4284, Acc 0.7587 | 5,993 |
+| hERG Inhibition | binary | **AUC 0.8703** | MCC 0.5215, Acc 0.7776 | 5,993 |
+| toxicity_binary | binary | **AUC 0.8365** | MCC 0.4827, Acc 0.7576 | 5,993 |
+| toxicity_type | multiclass (6) | **macro-F1 0.2201** | Acc 0.7047 | 5,991 |
+| neurotoxicity_type | multiclass (4) | **macro-F1 0.3649** | Acc 0.3794 | 1,310 (partial) |
+| HC50 | regression | **R² 0.6525** | RMSE 0.3184, MAE 0.2541 | 3,570 (partial) |
 
 > ⚠️ **These numbers characterize the demo pipeline, not real-peptide
 > performance.** The core labels are drawn from a latent physicochemical model,
-> so the binary AUCs (~0.84–0.94) and the partial-label endpoints are exactly
+> so the binary AUCs (~0.84–0.93) and the partial-label endpoints are exactly
 > what the *pipeline* is designed to produce. The multiclass macro-F1s are low
 > because the class distributions are imbalanced (class 0 dominates
 > `toxicity_type`) — an honest consequence of the latent model, not a bug.
 
-**Effect of training-set size (this release's other goal).** Regenerating at
+**Effect of training-set size and the first external fold-in.** Regenerating at
 15,000 rows (same seed, same protocol) gives a mean primary metric of **0.6929**
 and HC50 R² **0.4610**; scaling to 30,000 rows lifts them to **0.7189** and
-**0.6100** respectively. The improvement is small and expected for a
-physicochemistry-driven demo, but it demonstrates that the training set is
-genuinely *scalable* — and that real data folded in via `--merge` will move
-these numbers in the same direction.
+**0.6100** respectively. Folding in the first external dataset — the
+[Peptaloid-database](https://github.com/Bibhuprasadbehera/Peptaloid-database)
+alkaloid library — adds 5 peptide sequences (see below) and the headline mean
+moves to **0.7229** (HC50 R² **0.6525**). **Honest caveat:** 5 rows out of
+30,005 is 0.017 % of the set, so the +0.0040 / +0.0425 deltas are within
+training-run noise, *not* a measurable gain from the data itself. They exist to
+prove the `--merge` path works end-to-end with a real external file, and that
+substantially larger real datasets (thousands of sequences, not five) are what
+will move these numbers meaningfully.
 
-The random-split comparison (0.7227) exists to quantify the "memorization" gap
-that AMPBench-MT (arXiv:2607.25518) documents. Here the gap is small (+0.0038)
-because the demo labels are driven by physicochemistry, but the *protocol* is
-what matters for real data.
+The random-split comparison (0.7140) exists to quantify the "memorization" gap
+that AMPBench-MT (arXiv:2607.25518) documents. Here the homology-controlled
+number (0.7229) is *above* the random split (delta −0.0089); with a latent
+physicochemical label model the two splits agree closely, and the *protocol* —
+not this particular gap — is what transfers to real data.
 
 ---
 
@@ -266,9 +273,9 @@ Sequences are grouped into **families by amino-acid composition** (the feature
 space the model actually sees). Families are assigned to train/val/test
 (70/10/20) so no composition family appears on both sides of a boundary. The
 script verifies and reports the max pairwise Jaccard overlap between train and
-test (≤ 0.31 in the 30k run; threshold 0.5) and the per-endpoint label-rate
-delta (≤ 0.017), so leakage is *measured*, not assumed. This follows the
-homology/leakage-control protocol of AMPBench-MT (arXiv:2607.25518).
+test (≤ 0.19 in the 30k+Peptaloid run; threshold 0.5) and the per-endpoint
+label-rate delta (≤ 0.014), so leakage is *measured*, not assumed. This follows
+the homology/leakage-control protocol of AMPBench-MT (arXiv:2607.25518).
 
 > **Honest note on SMILES→sequence.** pepADMET's shipped `Toxicity.csv`
 > contains SMILES but **no explicit sequence column**, and its own
@@ -279,6 +286,34 @@ homology/leakage-control protocol of AMPBench-MT (arXiv:2607.25518).
 > `sequence_provenance=smiles_inferred`; in our test only ~14/135 survived
 > length/composition sanity checks. The pipeline is *capable* of ingesting
 > real peptide sequences, but pepADMET's sample file is not a reliable source.
+
+> **Honest note on the Peptaloid fold-in (this release's first external
+> dataset).** The [Peptaloid-database](https://github.com/Bibhuprasadbehera/Peptaloid-database)
+> is a React web app for a peptide-alkaloid library. Its README claims ~161k
+> records, but the repository itself ships only **193 unique compounds** across
+> 8 CSVs (`src/Downloads/*.csv`) — the rest live behind its backend API, which
+> we do not scrape. Those 193 compounds are **SMILES-only with no sequence
+> column**, and most are not peptides (median SMILES length 61; median of 2
+> peptide-bond amide groups, where a real peptide would have ~N−1). Their ADMET
+> columns (`AMES`, `BBB_Martins`, `hERG`, `Caco2_Wang`, `ClinTox`, `LD50`, …)
+> are **continuous predicted values** (0–1 probabilities or log-scaled) from
+> *other* models, not experimental measurements, and only 53/193 rows carry
+> any.
+>
+> Recovery pipeline (all measured): 193 compounds → RDKit
+> `smiles_to_sequence` → **29 peptide-like sequences** (length 4–120) → of
+> those, only **14** also carry ADMET predictions → of those, **5** use the 20
+> standard amino acids only (the rest contain `X`, an unclassifiable side-chain
+> residue that the 428-dim feature extractor cannot encode). So the net
+> contribution is **5 sequences** (0.017 % of the 30,005-row set), each stamped
+> `data_origin=peptaloid_db`, `sequence_provenance=smiles_inferred`, with labels
+> `predicted_continuous_median_binary` (the continuous prediction was
+> binarised at its median — a *derived, low-trust* label, not an assay). These
+> are folded in via `prepare_data.py --merge` purely to exercise the real-data
+> path; their effect on the headline metric is within run noise (see the
+> Performance caveat). A `--merge` guard in `prepare_data.py` now drops
+> non-20-AA / `X`-containing external sequences with an explicit warning
+> instead of crashing the training loop.
 
 ---
 

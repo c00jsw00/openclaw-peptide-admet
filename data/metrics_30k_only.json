@@ -29,19 +29,19 @@
     "epochs": 40,
     "early_stopping": "val mixed loss, patience 8",
     "binary_pos_weights": {
-      "GI_absorption": 6.103856563568115,
-      "Caco2_permeability": 2.0876340866088867,
-      "BBB_penetration": 8.366190910339355,
-      "Ames_mutagenicity": 4.589300155639648,
-      "hERG_inhibition": 2.459472894668579,
-      "toxicity_binary": 2.0214388370513916
+      "GI_absorption": 6.117288112640381,
+      "Caco2_permeability": 2.0849251747131348,
+      "BBB_penetration": 8.509057998657227,
+      "Ames_mutagenicity": 4.631974220275879,
+      "hERG_inhibition": 2.4658303260803223,
+      "toxicity_binary": 2.030163049697876
     },
     "partial_labels": "NaN cell = endpoint not labelled for that row (masked out)",
     "seed": 42
   },
   "data": {
     "csv": "data/peptide_admet_demo.csv",
-    "n_samples": 30005,
+    "n_samples": 30000,
     "data_origin": "synthetic_demo",
     "provenance": "SYNTHETIC DEMO DATA (and/or external rows with their own data_origin). Labels come from a latent physicochemical model / external file; they are NOT experimental measurements unless the external file is a real dataset."
   },
@@ -50,9 +50,9 @@
       "name": "homology-controlled",
       "method": "greedy single-linkage 3-mer Jaccard clustering, family-level split (AMPBench-MT-style homology control, arXiv:2607.25518)",
       "counts": {
-        "train": 20999,
-        "val": 3013,
-        "test": 5993
+        "train": 20996,
+        "val": 3012,
+        "test": 5992
       },
       "audit": {
         "csv": "data/peptide_admet_demo.csv",
@@ -63,113 +63,113 @@
           "test": 0.2
         },
         "seed": 42,
-        "n_families": 29497,
+        "n_families": 29492,
         "counts": {
-          "train": 20999,
-          "val": 3013,
-          "test": 5993
+          "train": 20996,
+          "val": 3012,
+          "test": 5992
         },
-        "max_train_test_kmer_jaccard_audited": 0.1905,
-        "max_endpoint_rate_gap": 0.0138,
+        "max_train_test_kmer_jaccard_audited": 0.3077,
+        "max_endpoint_rate_gap": 0.0169,
         "method": "greedy single-linkage 3-mer Jaccard clustering, family-level split (AMPBench-MT-style homology control, arXiv:2607.25518)"
       },
       "test": {
         "GI_absorption": {
           "kind": "binary",
-          "n_labelled": 5993,
-          "n_total": 5993,
-          "auc": 0.8823,
-          "mcc": 0.4366,
-          "accuracy": 0.8004,
-          "pos_rate": 0.1342
+          "n_labelled": 5992,
+          "n_total": 5992,
+          "auc": 0.8864,
+          "mcc": 0.458,
+          "accuracy": 0.8141,
+          "pos_rate": 0.1347
         },
         "Caco2_permeability": {
           "kind": "binary",
-          "n_labelled": 5993,
-          "n_total": 5993,
-          "auc": 0.9081,
-          "mcc": 0.621,
-          "accuracy": 0.8295,
-          "pos_rate": 0.31
+          "n_labelled": 5992,
+          "n_total": 5992,
+          "auc": 0.9105,
+          "mcc": 0.6257,
+          "accuracy": 0.8258,
+          "pos_rate": 0.3072
         },
         "BBB_penetration": {
           "kind": "binary",
-          "n_labelled": 5993,
-          "n_total": 5993,
-          "auc": 0.9317,
-          "mcc": 0.5203,
-          "accuracy": 0.8537,
-          "pos_rate": 0.1058
+          "n_labelled": 5992,
+          "n_total": 5992,
+          "auc": 0.9368,
+          "mcc": 0.5433,
+          "accuracy": 0.8652,
+          "pos_rate": 0.1061
         },
         "Ames_mutagenicity": {
           "kind": "binary",
-          "n_labelled": 5993,
-          "n_total": 5993,
-          "auc": 0.8399,
-          "mcc": 0.4284,
-          "accuracy": 0.7587,
-          "pos_rate": 0.1784
+          "n_labelled": 5992,
+          "n_total": 5992,
+          "auc": 0.8415,
+          "mcc": 0.442,
+          "accuracy": 0.771,
+          "pos_rate": 0.1799
         },
         "hERG_inhibition": {
           "kind": "binary",
-          "n_labelled": 5993,
-          "n_total": 5993,
-          "auc": 0.8703,
-          "mcc": 0.5215,
-          "accuracy": 0.7776,
-          "pos_rate": 0.2855
+          "n_labelled": 5992,
+          "n_total": 5992,
+          "auc": 0.8723,
+          "mcc": 0.5194,
+          "accuracy": 0.7714,
+          "pos_rate": 0.2849
         },
         "toxicity_binary": {
           "kind": "binary",
-          "n_labelled": 5993,
-          "n_total": 5993,
-          "auc": 0.8365,
-          "mcc": 0.4827,
-          "accuracy": 0.7576,
-          "pos_rate": 0.3155
+          "n_labelled": 5992,
+          "n_total": 5992,
+          "auc": 0.8392,
+          "mcc": 0.4856,
+          "accuracy": 0.7537,
+          "pos_rate": 0.3151
         },
         "toxicity_type": {
           "kind": "multiclass",
-          "n_labelled": 5991,
-          "n_total": 5993,
-          "accuracy": 0.7047,
-          "macro_f1": 0.2201,
+          "n_labelled": 5992,
+          "n_total": 5992,
+          "accuracy": 0.7034,
+          "macro_f1": 0.2208,
           "class_distribution": {
-            "0": 4101,
-            "1": 355,
-            "2": 461,
-            "3": 490,
-            "4": 272,
-            "5": 312
+            "0": 4104,
+            "1": 353,
+            "2": 453,
+            "3": 491,
+            "4": 277,
+            "5": 314
           }
         },
         "neurotoxicity_type": {
           "kind": "multiclass",
-          "n_labelled": 1310,
-          "n_total": 5993,
-          "accuracy": 0.3794,
-          "macro_f1": 0.3649,
+          "n_labelled": 1297,
+          "n_total": 5992,
+          "accuracy": 0.3847,
+          "macro_f1": 0.3525,
           "class_distribution": {
-            "0": 310,
-            "1": 309,
-            "2": 277,
-            "3": 414
+            "0": 308,
+            "1": 306,
+            "2": 271,
+            "3": 412
           }
         },
         "HC50": {
           "kind": "regression",
-          "n_labelled": 3570,
-          "n_total": 5993,
-          "r2": 0.6525,
-          "rmse": 0.3184,
-          "mae": 0.2541,
+          "n_labelled": 3589,
+          "n_total": 5992,
+          "r2": 0.61,
+          "rmse": 0.3386,
+          "mae": 0.268,
           "y_range": [
             0.5,
             3.0
           ],
           "pred_range": [
-            0.435,
-            3.551
+            0.337,
+            3.77
           ]
         }
       }
@@ -178,8 +178,8 @@
       "name": "random 70/10/20",
       "note": "reported to show the homology-control delta; random-split numbers are inflated by near-duplicate leakage",
       "counts": {
-        "train": 21003,
-        "val": 6751,
+        "train": 20999,
+        "val": 6750,
         "test": 2251
       },
       "test": {
@@ -187,109 +187,109 @@
           "kind": "binary",
           "n_labelled": 2251,
           "n_total": 2251,
-          "auc": 0.8987,
-          "mcc": 0.4828,
-          "accuracy": 0.7805,
-          "pos_rate": 0.1573
+          "auc": 0.8983,
+          "mcc": 0.4839,
+          "accuracy": 0.8054,
+          "pos_rate": 0.1493
         },
         "Caco2_permeability": {
           "kind": "binary",
           "n_labelled": 2251,
           "n_total": 2251,
-          "auc": 0.9037,
-          "mcc": 0.6105,
-          "accuracy": 0.8139,
-          "pos_rate": 0.3252
+          "auc": 0.9065,
+          "mcc": 0.6244,
+          "accuracy": 0.8263,
+          "pos_rate": 0.3159
         },
         "BBB_penetration": {
           "kind": "binary",
           "n_labelled": 2251,
           "n_total": 2251,
-          "auc": 0.9329,
-          "mcc": 0.5136,
-          "accuracy": 0.8241,
-          "pos_rate": 0.1217
+          "auc": 0.9364,
+          "mcc": 0.5294,
+          "accuracy": 0.8507,
+          "pos_rate": 0.1124
         },
         "Ames_mutagenicity": {
           "kind": "binary",
           "n_labelled": 2251,
           "n_total": 2251,
-          "auc": 0.8431,
-          "mcc": 0.4558,
-          "accuracy": 0.7819,
-          "pos_rate": 0.1906
+          "auc": 0.836,
+          "mcc": 0.4259,
+          "accuracy": 0.7739,
+          "pos_rate": 0.1741
         },
         "hERG_inhibition": {
           "kind": "binary",
           "n_labelled": 2251,
           "n_total": 2251,
-          "auc": 0.8736,
-          "mcc": 0.5282,
-          "accuracy": 0.7694,
-          "pos_rate": 0.2928
+          "auc": 0.8635,
+          "mcc": 0.5105,
+          "accuracy": 0.7752,
+          "pos_rate": 0.2808
         },
         "toxicity_binary": {
           "kind": "binary",
           "n_labelled": 2251,
           "n_total": 2251,
-          "auc": 0.8339,
-          "mcc": 0.4725,
-          "accuracy": 0.7366,
-          "pos_rate": 0.3412
+          "auc": 0.8456,
+          "mcc": 0.4891,
+          "accuracy": 0.7588,
+          "pos_rate": 0.3265
         },
         "toxicity_type": {
           "kind": "multiclass",
           "n_labelled": 2251,
           "n_total": 2251,
-          "accuracy": 0.6855,
-          "macro_f1": 0.221,
+          "accuracy": 0.7015,
+          "macro_f1": 0.2176,
           "class_distribution": {
-            "0": 1483,
-            "1": 155,
-            "2": 180,
-            "3": 207,
-            "4": 96,
-            "5": 130
+            "0": 1516,
+            "1": 136,
+            "2": 165,
+            "3": 199,
+            "4": 104,
+            "5": 131
           }
         },
         "neurotoxicity_type": {
           "kind": "multiclass",
-          "n_labelled": 505,
+          "n_labelled": 497,
           "n_total": 2251,
-          "accuracy": 0.3881,
-          "macro_f1": 0.3431,
+          "accuracy": 0.3783,
+          "macro_f1": 0.3409,
           "class_distribution": {
-            "0": 109,
-            "1": 139,
-            "2": 116,
-            "3": 141
+            "0": 111,
+            "1": 116,
+            "2": 108,
+            "3": 162
           }
         },
         "HC50": {
           "kind": "regression",
-          "n_labelled": 1335,
+          "n_labelled": 1366,
           "n_total": 2251,
-          "r2": 0.5756,
-          "rmse": 0.3578,
-          "mae": 0.2848,
+          "r2": 0.6599,
+          "rmse": 0.3172,
+          "mae": 0.2525,
           "y_range": [
             0.5,
             3.0
           ],
           "pred_range": [
-            0.595,
-            3.483
+            0.498,
+            3.695
           ]
         }
       }
     }
   },
   "headline": {
-    "primary_mean_metric": 0.7229,
-    "comparison_mean_metric": 0.714,
-    "homology_control_delta": -0.0089,
+    "primary_mean_metric": 0.7189,
+    "comparison_mean_metric": 0.7227,
+    "homology_control_delta": 0.0038,
     "metric_note": "mean over endpoints of AUC(binary)/macroF1(multiclass)/R2(regression)"
   },
-  "generated_at": "2026-08-25 14:17:05",
-  "elapsed_s": 33.4
+  "generated_at": "2026-08-25 04:12:14",
+  "elapsed_s": 19.6
 }

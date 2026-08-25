@@ -297,7 +297,21 @@ def main():
         if missing:
             raise SystemExit(f'{args.merge} missing columns: {sorted(missing)}')
         ext = ext.dropna(subset=['sequence'])
-        ext = ext[ext['sequence'].astype(str).str.len() >= 3]
+        ext['sequence'] = ext['sequence'].astype(str).str.strip().str.upper()
+        # Guard: feature extraction (prepare_data.vectorized_features and the
+        # training-time encoder) only knows the 20 standard amino acids.  A
+        # non-alphabetic or X-containing sequence would crash training with a
+        # KeyError, so drop such rows here with an explicit warning instead of
+        # letting them surface deep inside the training loop.
+        valid_mask = ext['sequence'].apply(
+            lambda s: len(s) >= 3 and set(s) <= set(AMINO_ACIDS))
+        n_dropped = int((~valid_mask).sum())
+        if n_dropped:
+            print(f'WARNING: dropping {n_dropped} external row(s) with '
+                  f'sequences outside the 20 standard amino acids '
+                  f'(e.g. SMILES-inferred X residues); they cannot be '
+                  f'encoded by the 428-dim feature extractor.')
+        ext = ext[valid_mask]
         merged_external = ext.to_dict('records')
         print(f'Folding in {len(ext)} external rows from {args.merge} '
               f'(data_origin preserved, labels NOT relabelled)')

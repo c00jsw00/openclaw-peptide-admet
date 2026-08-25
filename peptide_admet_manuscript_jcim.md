@@ -13,10 +13,16 @@
 > **partial-label masking** and an **extensible training set** (`prepare_data.py
 > --n <any>` + `ingest_external.py --merge`). On a 30,000-row training set the
 > homology-controlled mean primary metric is **0.7189** (per-endpoint values in
-> `README.md` and `PREDICTOR_SUMMARY.md`). The evaluation protocol
-> (homology-controlled split + leakage audit + dual-split reporting) is
-> unchanged. **This manuscript must be updated to the v3.0 endpoint set and
-> 30k metrics before any (re-)submission; the figures below reflect v2.0.**
+> `README.md` and `PREDICTOR_SUMMARY.md`). A first external dataset — the
+> [Peptaloid-database](https://github.com/Bibhuprasadbehera/Peptaloid-database)
+> peptide-alkaloid library (193 SMILES-only compounds; net 5 recovered peptide
+> sequences after RDKit recovery + 20-AA filtering) — has since been folded in,
+> lifting the 30,005-row headline to **0.7229** (HC50 R² 0.6525); the +0.0040
+> delta is within run noise given only 5 rows were added. The evaluation
+> protocol (homology-controlled split + leakage audit + dual-split reporting) is
+> unchanged. **This manuscript must be updated to the v3.0 endpoint set and the
+> current 30k metrics before any (re-)submission; the figures below reflect
+> v2.0.**
 
 **Version:** 2.0 (integrity revision, 2026-08-24). This revision replaces the v1.0 manuscript's
 reported metrics (97.70% accuracy / 0.9987 AUC), which traced to hardcoded values and a
