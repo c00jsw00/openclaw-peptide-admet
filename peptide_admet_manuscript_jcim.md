@@ -119,7 +119,7 @@ The two permeability tables' native "sequence" column is a non-standard residue-
 A single MLP class (`MixedADMETMLP` in `admet_model.py`) is instantiated per endpoint — the *same* class in trainer and predictor, so the two can never drift apart:
 
 - Input `d` → Linear 256 → BatchNorm → ReLU → Dropout(0.2) → Linear 128 → BatchNorm → ReLU → Dropout(0.2) → a single task head (`Linear(128,1)`; sigmoid for Hemolysis, identity for the three regressions).
-- Parameter counts: **143,617** (sequence endpoints, d=428) and **613,889** (molecular endpoints, d=2,265). Loss: BCE-with-logits (Hemolysis) or MSE (regressions). Optimizer: Adam (lr 3e-4), `ReduceLROnPlateau` (factor 0.5, patience 3), early stopping on the validation objective (patience 8). Trained on CPU. No ensemble; no Random Forest.
+- Parameter counts: **143,617** (sequence endpoints, d=428) and **613,889** (molecular endpoints, d=2,265). Loss: BCE-with-logits (Hemolysis) or MSE (regressions). Optimizer: Adam (lr 1e-3, weight-decay 1e-5), `ReduceLROnPlateau` (factor 0.5, patience 4), early stopping on the validation objective (patience 10). Trained on CPU. No ensemble; no Random Forest.
 
 ### 2.4 Leakage-Controlled Splitting with Audit (per modality)
 

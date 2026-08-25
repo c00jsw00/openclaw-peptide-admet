@@ -107,7 +107,7 @@ Morgan fingerprint(半徑 2)2,048 位。無效 SMILES → 該行特徵全零並�
 
 - 共享 trunk:`input_dim → 256 → 128`(ReLU + BatchNorm + Dropout 0.2)
 - 單任務 head:binary `Linear(128,1)` + sigmoid;regression `Linear(128,1)`
-- 訓練:Adam(lr=3e-4)+ ReduceLROnPlateau + early stopping(val loss)
+- 訓練:Adam(lr=1e-3, wd=1e-5)+ ReduceLROnPlateau + early stopping(val loss, patience 10)
 - 參數數:序列端點 **143,617**;分子端點 **613,889**
 
 ---
