@@ -6,6 +6,7 @@
   "n_params": 613889,
   "input_dim": 2265,
   "feature_layout": "2265-dim: 217 RDKit 2D descriptors + 2048-bit Morgan (radius 2)",
+  "esmc": null,
   "target_transform": "identity",
   "raw_units": "logPapp",
   "data_source": "Chemit797/PepADMET-Dataset (real experimental data)",
@@ -68,6 +69,6 @@
     },
     "comparison": null
   },
-  "elapsed_s": 595.6,
-  "generated_at": "2026-08-25 22:05:47"
+  "elapsed_s": 142.0,
+  "generated_at": "2026-08-26 05:50:35"
 }

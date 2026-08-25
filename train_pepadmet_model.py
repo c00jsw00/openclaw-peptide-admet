@@ -3,7 +3,20 @@
 train_pepadmet_model.py
 =======================
 
-Train the **v4.0 four-endpoint, real-data** peptide ADMET models.
+Train the **v4.1 four-endpoint, real-data + ESMC** peptide ADMET models.
+
+v4.1 (2026-08-26) — ESMC-600M edition
+-------------------------------------
+Extends v4.0 (Chemit797/PepADMET-Dataset) with **frozen ESMC-600M** (Biohub
+ESM Cambrian) sequence embeddings for the two sequence-modality endpoints.
+The 1152-dim mean-pooled embedding is *concatenated* to the classical
+428-dim sequence vector (AAC+DPC+physchem) -> 1580-dim model input.  The
+embeddings are precomputed offline (``esmc_embed.py`` in the Python>=3.12
+``.venv-esmc`` env) and cached in ``data/esmc/*.npz``; training and
+inference therefore stay on CPU with **no ESMC dependency** — the cache is
+verified (shape, finiteness, row order) before use.  Caco2 / PAMPA_MDCK are
+unchanged (their source "sequences" are non-standard peptidomimetic residue
+lists, ~0.2% standard AA, so they are not embeddable).
 
 v4.0 (2026-08-25) — real-data edition
 -------------------------------------
@@ -12,18 +25,20 @@ Replaces the v3.0 synthetic demo with the four endpoints requested from the
 ``MixedADMETMLP`` (the class is generic: ``endpoints=[name]`` builds a
 one-head model) matched to the modality its data actually has:
 
-  ====================  ========  =================  ==================
+  ====================  ========  =================  ===========================
   endpoint              kind      modality           features
-  ====================  ========  =================  ==================
-  Hemolysis             binary    sequence           428-dim (20 AAC +
-                                                     400 DPC + 8 physchem)
-  Half_life             reg       sequence           428-dim, target =
-                                                     log10(half-life, s)
+  ====================  ========  =================  ===========================
+  Hemolysis             binary    sequence           1580-dim = 428 classical
+                                                     (20 AAC + 400 DPC + 8
+                                                     physchem) + 1152 frozen
+                                                     ESMC-600M embedding
+  Half_life             reg       sequence           1580-dim, same layout,
+                                                     target = log10(half-life, s)
   Caco2                 reg       molecular          2265-dim (217 RDKit
                                                      2D descriptors +
                                                      2048-bit Morgan r=2)
   PAMPA_MDCK            reg       molecular          2265-dim, same as Caco2
-  ====================  ========  =================  ==================
+  ====================  ========  =================  ===========================
 
 Why four separate models instead of one shared-trunk multi-task model: the
 four datasets are **disjoint molecules** in **two different feature spaces**
@@ -81,7 +96,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 from admet_model import MixedADMETMLP, predict_mixed, save_mixed_model
-from endpoint_config import ENDPOINTS, ENDPOINT_BY_NAME, KIND_BINARY
+from endpoint_config import (ENDPOINTS, ENDPOINT_BY_NAME, KIND_BINARY,
+                             ESMC_MODEL, ESMC_DIM, esmc_cache_path)
 from feature_extractor import molecule_features, sequence_features
 from homology_split import greedy_kmer_clusters, split_by_family, leakage_audit, kmer_counts
 
@@ -90,6 +106,46 @@ PREPARED_CSV = {'Hemolysis': 'data/pepadmet_hemolysis.csv',
                 'Half_life': 'data/pepadmet_half_life.csv',
                 'Caco2': 'data/pepadmet_caco2.csv',
                 'PAMPA_MDCK': 'data/pepadmet_pampa_mdck.csv'}
+
+
+# --------------------------------------------------------------------------- #
+# ESMC-600M embedding cache (v4.1)
+# --------------------------------------------------------------------------- #
+def load_esmc_embeddings(name: str, csv_seqs, n: int) -> np.ndarray:
+    """Load the frozen ESMC-600M embeddings cached for this endpoint.
+
+    The cache (``data/esmc/esmc_emb_<slug>.npz``) stores (emb (N,1152)
+    float32, sequences, meta) in prepared-CSV row order.  We verify the row
+    count, finiteness, and — defensively — the exact sequence order; if the
+    order ever drifts we reindex by sequence (a sequence-level re-join is the
+    only safe fallback, and it is exact because sequences are unique keys
+    within a prepared CSV).
+    """
+    path = esmc_cache_path(name)
+    if not Path(path).exists():
+        raise FileNotFoundError(
+            f'{name}: ESMC cache missing at {path} — '
+            f'run `.venv-esmc/Scripts/python.exe esmc_embed.py` first')
+    z = np.load(path, allow_pickle=True)
+    emb, emb_seq = z['emb'], z['sequences']
+    emb_seq = np.asarray(emb_seq, dtype=object)
+    emb = np.asarray(emb, dtype=np.float32)
+    if emb.shape != (n, ESMC_DIM):
+        raise ValueError(
+            f'{name}: ESMC cache shape {emb.shape} != expected '
+            f'({n}, {ESMC_DIM}) — regenerate with esmc_embed.py')
+    if not np.isfinite(emb).all():
+        raise ValueError(f'{name}: ESMC cache contains non-finite values')
+    csv_arr = np.asarray(csv_seqs, dtype=object)
+    if emb_seq.shape != csv_arr.shape or not np.array_equal(emb_seq, csv_arr):
+        idx = {s: i for i, s in enumerate(emb_seq)}
+        missing = [s for s in csv_arr if s not in idx]
+        if missing:
+            raise ValueError(f'{name}: {len(missing)} sequences in the '
+                             f'prepared CSV are missing from the ESMC cache')
+        print(f'  [{name}] ESMC cache order drifted — reindexed by sequence')
+        emb = emb[[idx[s] for s in csv_arr]]
+    return emb
 
 
 # --------------------------------------------------------------------------- #
@@ -337,6 +393,14 @@ def run_endpoint(name, epochs, seed, model_root):
 
     X, y, keys, key_label, n = load_endpoint(name, PREPARED_CSV[name])
 
+    # v4.1: append the frozen ESMC-600M embedding to the sequence features.
+    # The cache is verified against `keys` (the prepared-CSV sequences) inside
+    # load_esmc_embeddings, so the concat is row-aligned by construction.
+    if getattr(ep, 'esmc', False):
+        emb = load_esmc_embeddings(name, keys, n)
+        X = np.hstack([X, emb]).astype(np.float32)
+        print(f'  [{name}] +ESMC {ESMC_MODEL}: input {X.shape[1] - ESMC_DIM} -> {X.shape[1]}')
+
     if ep.modality == 'sequence':
         tr, va, te, audit = split_sequence(n, keys, y, seed)
         # comparison: random split (inflated, same seed)
@@ -390,9 +454,17 @@ def run_endpoint(name, epochs, seed, model_root):
         'model': 'MixedADMETMLP (single head, per-endpoint)',
         'n_params': int(sum(p.numel() for p in model.parameters())),
         'input_dim': int(X.shape[1]),
-        'feature_layout': ('428-dim: 20 AAC + 400 DPC + 8 physchem'
+        'feature_layout': (('428-dim classical (20 AAC + 400 DPC + 8 physchem) '
+                            '+ 1152-dim frozen ESMC-600M embedding = 1580'
+                            if getattr(ep, 'esmc', False) else
+                            '428-dim: 20 AAC + 400 DPC + 8 physchem')
                            if ep.modality == 'sequence' else
                            '2265-dim: 217 RDKit 2D descriptors + 2048-bit Morgan (radius 2)'),
+        'esmc': (None if not getattr(ep, 'esmc', False) else
+                 {'model': ESMC_MODEL, 'embedding_dim': ESMC_DIM,
+                  'aggregation': 'mean-pooled token states',
+                  'frozen': True,
+                  'cache': esmc_cache_path(name)}),
         'target_transform': ep.target_transform,
         'raw_units': ep.raw_units,
         'data_source': 'Chemit797/PepADMET-Dataset (real experimental data)',
@@ -416,7 +488,7 @@ def run_endpoint(name, epochs, seed, model_root):
 # Main
 # --------------------------------------------------------------------------- #
 def main():
-    ap = argparse.ArgumentParser(description='Train v4.0 4-endpoint real-data models')
+    ap = argparse.ArgumentParser(description='Train v4.1 4-endpoint real-data + ESMC models')
     ap.add_argument('--endpoints', nargs='+',
                     default=[e.name for e in ENDPOINTS],
                     help='subset of: Hemolysis Half_life Caco2 PAMPA_MDCK')
@@ -439,7 +511,7 @@ def main():
     root = Path(args.model_root)
     root.mkdir(parents=True, exist_ok=True)
     summary = {
-        'version': 'v4.0 (real-data, Chemit797/PepADMET-Dataset)',
+        'version': 'v4.1 (real-data + ESMC-600M, Chemit797/PepADMET-Dataset)',
         'endpoints': {},
         'note': ('Each endpoint is an independent single-task model on its own '
                  'modality-appropriate features; there is no composite score '

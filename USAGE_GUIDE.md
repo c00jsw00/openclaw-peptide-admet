@@ -1,156 +1,148 @@
 # Usage Guide for Peptide ADMET Prediction Model
 
-> **2026-08 v3.0**: this guide reflects the extended pipeline — 9 endpoints
-> (6 binary + 6-class + 4-class + 1 regression), partial-label masking, and
-> an extensible training set. The old `peptide_admet_inference.py` /
-> `PeptideADMETPredictor` / `rf_model.pkl` / `nn_model.pkl` artifacts no
-> longer exist — see `README.md` for what replaced them.
+> **2026-08 v4.1**: this guide reflects the **real-data + ESMC** pipeline —
+> four endpoints (Hemolysis, Half-life, Caco-2, PAMPA/MDCK), dual-modality
+> features (sequence endpoints: 428-dim classical + 1,152-dim frozen
+> ESMC-600M = 1,580-dim; molecular endpoints: 2,265-dim RDKit), and four
+> independent single-task models. The v3.0 `synthetic_demo` 30k-row data and
+> the 9-endpoint `PeptideAdmetPredictor` / composite-score / `ingest_external.py`
+> path were removed in v4.0. See `README.md` for the full rationale and
+> `PREDICTOR_SUMMARY.md` for the endpoint summary.
 
 ## Installation
 
 ```bash
-pip install torch scikit-learn pandas numpy rdkit
-# CPU-only torch (smaller download):
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-```
+# main env (Python 3.11, CPU torch is fine) — needs rdkit
+uv pip install --python .venv/Scripts/python.exe rdkit
 
-`rdkit` is only needed for the optional SMILES→sequence ingestion path.
+# OPTIONAL ESMC env (Python >= 3.12) — only needed to (a) regenerate the
+# frozen ESMC embeddings or (b) predict a brand-new sequence not in the
+# committed cache.  Retrain + predict on cached sequences do NOT need it.
+# Build per the header of esmc_embed.py (uv venv --python 3.12 + esm@git main).
+```
 
 ## Pipeline (train from scratch)
 
 ```bash
-python prepare_data.py --n 30000        # any size; seed 42 (default)
-python homology_split.py                # AMPBench-MT-style family-controlled 70/10/20 split + leakage audit
-python train_peptide_admet_model.py     # mixed multi-task training, writes peptide_admet_model/ + metrics.json
+python prepare_pepadmet_data.py            # load + clean the 4 real CSVs -> data/pepadmet_*.csv
+
+# OPTIONAL: regenerate the frozen ESMC-600M embeddings (first run, or if the
+# sequence set changed).  Already-committed npz works as-is.
+.venv-esmc/Scripts/python.exe esmc_embed.py   # -> data/esmc/*.npz
+
+python train_pepadmet_model.py --epochs 80 --seed 42   # -> models_v4/ (weights + metrics.json)
 ```
 
-## Extending the training set
-
-```bash
-# Option A: just make it bigger (more synthetic rows)
-python prepare_data.py --n 100000
-
-# Option B: fold in a real / external dataset (one sequence per row + label columns)
-python ingest_external.py --input real.csv --source my_real_data --output data/real.csv
-python prepare_data.py --n 30000 --merge data/real.csv
-python homology_split.py
-python train_peptide_admet_model.py
-```
-
-External CSV label columns use the endpoint names (`GI_absorption`,
-`Caco2_permeability`, `BBB_penetration`, `Ames_mutagenicity`, `hERG_inhibition`,
-`toxicity_binary`, `toxicity_type`, `neurotoxicity_type`, `HC50`); empty cell
-= "not measured" (masked out for that endpoint). `ingest_external.py`
-validates sequences, dedups, and stamps `data_origin` +
-`sequence_provenance` on every row.
-
-## Quick Start
+## Quick Start (Python API)
 
 ```python
-from peptide_admet_predictor import PeptideAdmetPredictor
+from peptide_admet_predictor import load_endpoint_models, build_features
 
-predictor = PeptideAdmetPredictor(model_dir='peptide_admet_model')
+models = load_endpoint_models(['Hemolysis', 'Half_life'], model_root='models_v4')
 
-out = predictor.predict("WALVKALVNHRISSSLVCG")
-for ep in out['results']:
-    print(ep['endpoint'], ep['kind'], ep['value'])
-print('composite', round(out['composite_score'], 4))
+# one sequence -> both sequence endpoints (ESMC resolved from the committed
+# cache for known sequences; a novel sequence shells out to .venv-esmc)
+seq = "ACDEFGHIKLMNPQRSTVWY"
+X, _, _ = build_features('Hemolysis', [seq], [None])
+p_hemo = models['Hemolysis'].predict(X)[0]          # P(hemolytic)
+
+# one SMILES -> a molecular endpoint
+smi = "CC(=O)N[C@@H](C)C(=O)N[C@@H](CCCNC(=N)N)C(=O)O"
+X, _, _ = build_features('Caco2', [None], [smi])
+caco2 = models['Caco2'].to_readable(models['Caco2'].predict(X))[0]  # logPapp
 ```
+
+`predict_rows(rows, endpoints, model_root)` is the batch driver: pass a list
+of dicts each with an optional `sequence` and/or `smiles`; it returns one
+result dict per row (`{'value', 'unit', 'ok'}` per endpoint).
 
 ## Command Line
 
 ```bash
-python peptide_admet_predictor.py --sequence "WALVKALVNHRISSSLVCG"
-python peptide_admet_predictor.py --sequences test_sequences.txt --rank   # ranked by composite score
-python peptide_admet_predictor.py --sequence "ACDEFGHIK" --output out.json
+# sequence endpoints (Hemolysis + Half_life)
+python peptide_admet_predictor.py --sequence "ACDEFGHIKLMNPQRSTVWY"
+
+# molecular endpoints (Caco2 + PAMPA_MDCK)
+python peptide_admet_predictor.py --smiles "CC(=O)N[C@@H](C)C(=O)N[C@@H](CCCNC(=N)N)C(=O)O"
+
+# a batch CSV (optional 'sequence' and/or 'smiles' columns), JSON out
+python peptide_admet_predictor.py --csv data/test_candidates.csv --out results.json
+
+# restrict which endpoints to run
+python peptide_admet_predictor.py --sequence "ACDEF..." --endpoints Hemolysis
 ```
 
-## Model Files Required
+The CLI auto-routes: a `--sequence` runs the two sequence endpoints, a
+`--smiles` runs the two molecular endpoints; a `--csv` runs all four.
+
+## Model Files (models_v4/, committed)
 
 ```
-peptide_admet_model/
-├── admet_mlp.pt   # PyTorch state dict (+ architecture metadata, model_version: v3_mixed)
-├── scaler.pt      # fitted StandardScaler
-└── metrics.json   # measured per-endpoint metrics (printed by the CLI)
+models_v4/<endpoint>/admet_mlp.pt   # PyTorch weights + architecture metadata
+models_v4/<endpoint>/scaler.pt      # StandardScaler (fitted on train only)
+models_v4/<endpoint>/metrics.json   # measured metrics (both splits) + leakage audit
+models_v4/summary.json              # 4-endpoint aggregate
+
+# frozen ESMC-600M embedding caches (committed; no 3.12 env needed to use them)
+data/esmc/esmc_emb_hemolysis.npz    # (8719, 1152) float32, mean-pooled
+data/esmc/esmc_emb_half_life.npz    # (1763, 1152) float32, mean-pooled
 ```
 
-The predictor auto-detects v2 (5-head binary) vs v3 (mixed 9-endpoint)
-checkpoints.
+`<endpoint>` ∈ {`hemolysis`, `half_life`, `caco2`, `pampa_mdck`}.
+The predictor's `EndpointModel.predict(X)` applies the shipped scaler
+internally — pass **raw** features (do not pre-scale).
 
-## API
+## Feature Engineering
 
-### `PeptideAdmetPredictor(model_dir='peptide_admet_model')`
-
-Loads `admet_mlp.pt` + `scaler.pt`; reads `metrics.json` if present.
-
-### `predict(sequences, endpoints=None) -> dict`
-
-- `sequences`: str or list[str]
-- returns: `{'sequence', 'length', 'results': [{endpoint, kind, value, risk}], 'composite_score', 'endpoints': {name: value}, 'model_info'}`
-  - `kind` is `binary` (value = probability), `multiclass` (value = class
-    index), or `regression` (value = predicted quantity).
-
-### `model_info() -> dict`
-
-Measured-only model summary (type, param count, split, mean primary metric,
-per-endpoint metrics, data origin). Never fabricates values: if
-`metrics.json` is missing, fields are `None`/`"not measured"`.
-
-## Feature Engineering (428-dim)
-
-| Block | Dim | Content |
+| Modality | Dim | Content |
 |---|---|---|
-| AAC | 20 | amino acid frequencies |
-| DPC | 400 | dipeptide frequencies |
-| Physchem | 8 | MW proxy (length × 110 Da), avg hydropathy, hydropathy range, net charge @ pH 7, pI estimate, GRAVY, hydrophobic fraction, charged fraction |
+| Sequence (classical) | 428 | AAC 20 + DPC 400 + physchem 8 (MW proxy, avg hydropathy, net charge @ pH 7, pI estimate, GRAVY, hydrophobic/charged fraction) |
+| Sequence (+ESMC, v4.1) | 1,580 | 428 classical **concat** 1,152-dim frozen ESMC-600M (attention-mask mean-pooled) |
+| Molecular | 2,265 | RDKit 2D descriptors 217 + Morgan fingerprint (radius 2) 2,048 |
 
-Identical code in training and inference.
+Identical code in training and inference (`feature_extractor.py`). ESMC is
+**frozen** (no fine-tune, no gradient) — the npz is precomputed and committed.
 
 ## Interpretation Guide
 
-| Endpoint | Kind | High value means | Action |
-|---|---|---|---|
-| GI Absorption | binary | good oral bioavailability | favorable for oral delivery |
-| Caco-2 Permeability | binary | good intestinal permeability | favorable |
-| BBB Penetration | binary | may cross blood-brain barrier | useful for CNS targets; check off-target CNS effects |
-| Ames Mutagenicity | binary | mutagenicity risk | optimize / re-screen |
-| hERG Inhibition | binary | cardiotoxicity risk | critical — reduce cationic/hydrophobic content |
-| Toxicity (binary) | binary | overall toxicity risk | screen before progression |
-| Toxicity Type | 6-class | class 0 = non-toxic; 1–5 = organ-specific | inspect argmax class |
-| Neurotoxicity Type | 4-class | class 0 = non-neurotoxic; 1–3 = neurotoxic subtypes | inspect argmax class |
-| HC50 | regression | lower = more potent (µM) | prefer higher values |
+| Endpoint | Kind | Higher value means |
+|---|---|---|
+| Hemolysis | binary | higher P = more hemolytic (worse) |
+| Half-life | regression (log10 s) | longer plasma half-life |
+| Caco-2 | regression (logPapp) | higher = better intestinal permeability |
+| PAMPA/MDCK | regression (logPapp) | higher = better apparent permeability |
 
-These are **synthetic-demo** predictions — validate any real candidate
-experimentally before acting on them.
+These four datasets are disjoint molecules in two different feature spaces,
+so the models are **not** combined into a composite score.
 
 ## Best Practices
 
-- Batch prediction is faster than many single calls.
-- Use `--rank` for candidate prioritization; the composite score penalizes any
-  single poor endpoint.
-- Do not extrapolate far outside the 10–30 aa trained range.
-- Keep the split audit (`data/split/leakage_audit.json`) in mind: the headline
-  numbers come from the homology-controlled split.
-- For multiclass endpoints on imbalanced data, prefer the probability vector
-  (`out['results'][i]['value']` is the argmax class; the model exposes raw
-  logits if you subclass) over a hard threshold.
+- Predicting a **novel sequence** (not in `data/esmc/*.npz`) shells out to
+  `.venv-esmc` to embed it once; the first call is slow (loads the 573.6M
+  model), subsequent cached sequences are instant.
+- Do not extrapolate far outside the trained length window (~4–120 aa, most
+  sequences ~19).
+- Headline metrics are on the **homology-controlled** (sequence) /
+  unique-SMILES (molecular) split; the random split is a leakage contrast only.
+- For the molecular endpoints, near-isomer (same chemistry, different SMILES)
+  pairs may cross the split boundary — a documented SMILES-only limitation.
 
 ## Troubleshooting
 
+**`ESMC-600M env not found`** — a novel sequence needs `.venv-esmc` next to
+the script; cached sequences and the molecular endpoints do not.
+**Invalid sequence** — standard 20 amino acids only for the sequence endpoints.
+**`ModuleNotFoundError: rdkit`** — install rdkit (main env) for the molecular path.
 **Model files missing** — run the pipeline commands above.
-**Invalid sequence** — standard 20 amino acids only.
-**`ModuleNotFoundError: torch`** — install torch (CPU index URL above).
-**`ModuleNotFoundError: rdkit`** — only needed for `ingest_external.py` on
-SMILES-only files; `pip install rdkit`.
 
 ## References
 
-1. `README.md` — pipeline + leakage discussion + 2026 citations.
-2. `peptide_admet_manuscript_jcim.md` — manuscript.
-3. AMPBench-MT (arXiv:2607.25518).
-4. pepADMET (`ifyoungnet/pepADMET`) — source of the toxicity endpoint set and
-   the partial-label convention.
+1. `README.md` — pipeline + leakage discussion + version history.
+2. `PREDICTOR_SUMMARY.md` — endpoint summary + measured metrics.
+3. `peptide_admet_manuscript_jcim.md` — manuscript.
+4. ESMC (ESM Cambrian), Biohub — `biohub/ESMC-600M`.
+5. Chemit797/PepADMET-Dataset — source of the four real endpoints.
 
-**Version**: 3.0
-**Last Updated**: 2026-08-25
+**Version**: 4.1
+**Last Updated**: 2026-08-26
 **Author**: OpenClaw Team

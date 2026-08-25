@@ -3,9 +3,16 @@
   "kind": "binary",
   "modality": "sequence",
   "model": "MixedADMETMLP (single head, per-endpoint)",
-  "n_params": 143617,
-  "input_dim": 428,
-  "feature_layout": "428-dim: 20 AAC + 400 DPC + 8 physchem",
+  "n_params": 438529,
+  "input_dim": 1580,
+  "feature_layout": "428-dim classical (20 AAC + 400 DPC + 8 physchem) + 1152-dim frozen ESMC-600M embedding = 1580",
+  "esmc": {
+    "model": "biohub/ESMC-600M",
+    "embedding_dim": 1152,
+    "aggregation": "mean-pooled token states",
+    "frozen": true,
+    "cache": "data/esmc/esmc_emb_hemolysis.npz"
+  },
   "target_transform": "identity",
   "raw_units": "",
   "data_source": "Chemit797/PepADMET-Dataset (real experimental data)",
@@ -37,18 +44,18 @@
         "kind": "binary",
         "modality": "sequence",
         "n": 1745,
-        "auc": 0.7755,
-        "mcc": 0.3782,
-        "accuracy": 0.7009,
+        "auc": 0.8348,
+        "mcc": 0.4557,
+        "accuracy": 0.7479,
         "pos_rate": 0.2338
       },
       "val": {
         "kind": "binary",
         "modality": "sequence",
         "n": 872,
-        "auc": 0.7679,
-        "mcc": 0.3328,
-        "accuracy": 0.6766,
+        "auc": 0.8173,
+        "mcc": 0.4389,
+        "accuracy": 0.7305,
         "pos_rate": 0.2408
       }
     },
@@ -65,13 +72,13 @@
         "kind": "binary",
         "modality": "sequence",
         "n": 1745,
-        "auc": 0.7746,
-        "mcc": 0.3604,
-        "accuracy": 0.7192,
+        "auc": 0.8112,
+        "mcc": 0.4077,
+        "accuracy": 0.7341,
         "pos_rate": 0.2155
       }
     }
   },
-  "elapsed_s": 28.3,
-  "generated_at": "2026-08-25 21:55:48"
+  "elapsed_s": 17.1,
+  "generated_at": "2026-08-26 05:48:10"
 }

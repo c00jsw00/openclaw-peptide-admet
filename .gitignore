@@ -44,9 +44,13 @@ env/
 !models_v4/**/*.pt
 !models_v4/**/*.pth
 
-# Numpy data (large files)
+# Numpy data (large files) — the v4.1 frozen ESMC-600M embedding caches ARE
+# committed so training/prediction of the sequence endpoints works without the
+# Python >= 3.12 ESMC env.
 *.npy
 *.npz
+!data/esmc/
+!data/esmc/**/*.npz
 
 # Pandas data (large files) — the prepared PepADMET endpoint CSVs ARE the
 # committed training data (deterministic prepared inputs, ~3.4 MB total).
@@ -64,6 +68,8 @@ logs/
 tensorboard/
 # v4 run log committed as the human-readable record of the training run
 !train_v4.log
+# v4.1 (ESMC) run log
+!train_v41.log
 
 # GitHub
 .github/

@@ -4,7 +4,17 @@ endpoint_config.py
 ==================
 
 Single source of truth for the endpoint set of the openclaw peptide ADMET
-pipeline (v4.0 — real-data edition).
+pipeline (v4.1 — real-data + ESMC edition).
+
+v4.1 extends v4.0 (Chemit797/PepADMET-Dataset) with frozen **ESMC-600M**
+(Biohub ESM Cambrian) sequence embeddings for the two sequence-modality
+endpoints (Hemolysis, Half_life): the 428-dim classical sequence vector
+(AAC+DPC+phys-chem) is concatenated with the 1152-dim ESMC embedding ->
+1580-dim model input.  The embeddings are precomputed offline
+(`esmc_embed.py`, Python>=3.12 env) and cached in `data/esmc/*.npz`, so
+training and inference run on CPU with no ESMC dependency.  Caco-2 / PAMPA
+stay purely molecular (their source "sequences" are non-standard
+peptidomimetic residue lists, ~0.2% standard AA — not embeddable).
 
 v4.0 replaces the synthetic 9-endpoint set with the four endpoints requested
 for the **Chemit797/PepADMET-Dataset** release (cleaned ``整理/`` tables):
@@ -70,6 +80,22 @@ SEQUENCE_MIN_LEN = 4
 SEQUENCE_MAX_LEN = 120
 VALID_AA = set("ACDEFGHIKLMNPQRSTVWY")
 
+# --------------------------------------------------------------------------- #
+# ESMC-600M (Biohub, ESM Cambrian) sequence embeddings  [v4.1]
+# --------------------------------------------------------------------------- #
+# The two sequence-modality endpoints (Hemolysis, Half_life) also receive a
+# frozen 1152-dim ESMC-600M mean-pooled embedding, concatenated on to the
+# 428-dim classical sequence vector (AAC+DPC+phys-chem) -> 1580-dim input.
+# Embeddings are precomputed offline (esmc_embed.py, Python>=3.12 env) and
+# cached in data/esmc/*.npz so training / inference never need the ESMC env.
+ESMC_MODEL = 'biohub/ESMC-600M'
+ESMC_DIM = 1152
+ESMC_CACHE_DIR = 'data/esmc'
+# per-endpoint cached embedding file (slug = name.lower().replace(' ', '_'))
+def esmc_cache_path(name: str) -> str:
+    slug = name.lower().replace(' ', '_')
+    return f'{ESMC_CACHE_DIR}/esmc_emb_{slug}.npz'
+
 
 @dataclass(frozen=True)
 class Endpoint:
@@ -92,6 +118,8 @@ class Endpoint:
     higher_is_worse: bool = True   # for composite aggregation direction
     # direction hint used to fold a probability/estimate into [0,1] risk
     risk_direction: str = 'prob'   # 'prob' (P(positive)) | 'class' | 'value'
+    # v4.1: append the frozen ESMC-600M embedding to the sequence features
+    esmc: bool = False             # True -> input = 428-dim seq + 1152-dim ESMC
 
 
 # --------------------------------------------------------------------------- #
@@ -103,7 +131,8 @@ ENDPOINTS: List[Endpoint] = [
              source_column='label',
              seq_column='sequence_std',
              description='Hemolytic activity of the peptide (1 = hemolytic, 0 = non-hemolytic)',
-             in_composite=True, higher_is_worse=True, risk_direction='prob'),
+             in_composite=True, higher_is_worse=True, risk_direction='prob',
+             esmc=True),
 
     Endpoint('Half_life', KIND_REGRESSION, MODALITY_SEQUENCE, 1,
              source_file='整理/half_life_unified/half_life_final_minimal.csv',
@@ -112,7 +141,8 @@ ENDPOINTS: List[Endpoint] = [
              target_transform='log10',
              raw_units='seconds',
              description='Plasma half-life (seconds); modelled in log10 space',
-             in_composite=True, higher_is_worse=False, risk_direction='value'),
+             in_composite=True, higher_is_worse=False, risk_direction='value',
+             esmc=True),
 
     Endpoint('Caco2', KIND_REGRESSION, MODALITY_MOLECULAR, 1,
              source_file='整理/caco2_out/caco2_unified.csv',
@@ -143,9 +173,33 @@ MULTICLASS_NAMES = [e.name for e in ENDPOINTS if e.kind == KIND_MULTICLASS]
 REGRESSION_NAMES = [e.name for e in ENDPOINTS if e.kind == KIND_REGRESSION]
 SEQUENCE_NAMES = [e.name for e in ENDPOINTS if e.modality == MODALITY_SEQUENCE]
 MOLECULAR_NAMES = [e.name for e in ENDPOINTS if e.modality == MODALITY_MOLECULAR]
+ESMC_NAMES = [e.name for e in ENDPOINTS if e.esmc]
 
 # Composite-score inputs (the endpoints folded into the overall risk number)
 COMPOSITE_NAMES = [e.name for e in ENDPOINTS if e.in_composite]
+
+# Classical (non-ESMC) per-modality feature widths, for docs / checks.
+SEQ_FEATURE_DIM = 428      # 20 AAC + 400 DPC + 8 phys-chem
+MOL_FEATURE_DIM = 2265     # 217 RDKit 2D descriptors + 2048-bit Morgan r=2
+
+
+def input_dim_for(name: str) -> int:
+    """Effective model input dim for an endpoint (ESMC included when set)."""
+    e = ENDPOINT_BY_NAME[name]
+    base = SEQ_FEATURE_DIM if e.modality == MODALITY_SEQUENCE else MOL_FEATURE_DIM
+    return base + (ESMC_DIM if e.esmc else 0)
+
+
+def check_esmc_cache(root: str = '.'):
+    """Raise if any ESMC endpoint's precomputed embedding cache is missing."""
+    from pathlib import Path
+    missing = [n for n in ESMC_NAMES
+               if not (Path(root) / esmc_cache_path(n)).exists()]
+    if missing:
+        raise FileNotFoundError(
+            f'missing ESMC embedding cache for {missing}: '
+            f'run `.venv-esmc/Scripts/python.exe esmc_embed.py` '
+            f'(expected {esmc_cache_path(missing[0])})')
 
 
 def endpoint(name: str) -> Endpoint:

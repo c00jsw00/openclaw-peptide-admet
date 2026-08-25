@@ -1,25 +1,25 @@
 {
-  "version": "v4.0 (real-data, Chemit797/PepADMET-Dataset)",
+  "version": "v4.1 (real-data + ESMC-600M, Chemit797/PepADMET-Dataset)",
   "endpoints": {
     "Hemolysis": {
       "kind": "binary",
       "modality": "sequence",
       "n_samples": 8719,
-      "primary_metric": 0.7755,
+      "primary_metric": 0.8348,
       "primary_metric_name": "AUC",
-      "n_params": 143617,
-      "input_dim": 428,
-      "elapsed_s": 28.3
+      "n_params": 438529,
+      "input_dim": 1580,
+      "elapsed_s": 17.1
     },
     "Half_life": {
       "kind": "regression",
       "modality": "sequence",
       "n_samples": 1763,
-      "primary_metric": 0.5883,
+      "primary_metric": 0.6973,
       "primary_metric_name": "R2",
-      "n_params": 143617,
-      "input_dim": 428,
-      "elapsed_s": 3.8
+      "n_params": 438529,
+      "input_dim": 1580,
+      "elapsed_s": 2.6
     },
     "Caco2": {
       "kind": "regression",
@@ -29,7 +29,7 @@
       "primary_metric_name": "R2",
       "n_params": 613889,
       "input_dim": 2265,
-      "elapsed_s": 595.6
+      "elapsed_s": 142.0
     },
     "PAMPA_MDCK": {
       "kind": "regression",
@@ -39,7 +39,7 @@
       "primary_metric_name": "R2",
       "n_params": 613889,
       "input_dim": 2265,
-      "elapsed_s": 512.8
+      "elapsed_s": 133.6
     }
   },
   "note": "Each endpoint is an independent single-task model on its own modality-appropriate features; there is no composite score because the four datasets are disjoint molecules in two different feature spaces. Primary split = homology-controlled (sequence) or unique-SMILES random (molecular, no sequence available). All metrics measured on holdout."

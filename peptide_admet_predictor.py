@@ -3,7 +3,7 @@
 peptide_admet_predictor.py
 ==========================
 
-v4.0 real-data predictor for the four-endpoint **Chemit797/PepADMET-Dataset**
+v4.1 real-data + ESMC predictor for the four-endpoint **Chemit797/PepADMET-Dataset**
 pipeline.  Each endpoint is an independent single-task ``MixedADMETMLP`` loaded
 from ``models_v4/<slug>/admet_mlp.pt`` (+ ``scaler.pt``), matched to the
 modality its data has:
@@ -16,6 +16,14 @@ modality its data has:
   Caco2                 reg       molecular     SMILES          logPapp [-]
   PAMPA_MDCK            reg       molecular     SMILES          logPapp [-]
   ====================  ========  ============  ==============  ====================
+
+v4.1: the two sequence endpoints additionally consume a **frozen ESMC-600M**
+(1152-dim) embedding concatenated to the classical 428-dim features -> a
+1580-dim model input.  Sequences present in the committed training cache
+(``data/esmc/*.npz``) resolve instantly with no ESMC dependency; a novel
+sequence is embedded on demand by shelling out to the dedicated ``.venv-esmc``
+(Python >= 3.12) environment.  Caco2 / PAMPA_MDCK are unchanged (molecular
+path only).
 
 The four models are *not* combined into a composite score — the four datasets
 are disjoint molecules in two different feature spaces, so there is no
@@ -44,7 +52,10 @@ Usage
 
 import argparse
 import json
+import os
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -53,12 +64,93 @@ import torch
 from sklearn.preprocessing import StandardScaler
 
 from admet_model import MixedADMETMLP
-from endpoint_config import ENDPOINTS, ENDPOINT_BY_NAME
+from endpoint_config import (ENDPOINTS, ENDPOINT_BY_NAME, ESMC_DIM,
+                             esmc_cache_path)
 from feature_extractor import molecule_features, sequence_features
 
 SLUGS = {ep.name: ep.name.lower().replace(' ', '_') for ep in ENDPOINTS}
 SEQ_ENDPOINTS = [e.name for e in ENDPOINTS if e.modality == 'sequence']
 MOL_ENDPOINTS = [e.name for e in ENDPOINTS if e.modality == 'molecular']
+
+# --------------------------------------------------------------------------- #
+# ESMC-600M embedding supply (v4.1)
+# --------------------------------------------------------------------------- #
+# Frozen ESMC embeddings: sequences already in the training cache
+# (data/esmc/esmc_emb_<slug>.npz) are served instantly from that cache; a brand
+# new sequence is embedded on demand by shelling out to the dedicated
+# Python>=3.12 env (.venv-esmc) that owns the ESMC-600M checkpoint.  This keeps
+# the predictor itself dependency-free (plain CPU torch + numpy) while still
+# handling novel inputs.  Both sequence endpoints share one ESMC-600M, so a
+# single process-lifetime dict (seq -> 1152-dim vector) serves them both.
+_ESMC_MEM = {}          # str sequence -> np.float32[1152]
+_ESMC_CACHE_LOADED = set()   # endpoint slugs whose cache npz has been merged
+_ESMC_PY = None         # resolved .venv-esmc interpreter path
+
+
+def _esmc_python() -> Path:
+    global _ESMC_PY
+    if _ESMC_PY is not None:
+        return _ESMC_PY
+    root = Path(__file__).resolve().parent
+    for cand in (root / '.venv-esmc/Scripts/python.exe',
+                 root / '.venv-esmc/bin/python'):
+        if cand.exists():
+            _ESMC_PY = cand
+            return cand
+    raise FileNotFoundError(
+        'ESMC-600M env not found: expected .venv-esmc/'
+        '(Scripts/python.exe or bin/python) next to this script. '
+        'Novel (non-cached) sequences need it; cached sequences do not.')
+
+
+def _esmc_merge_endpoint_cache(name):
+    """Load this endpoint's cached embeddings into the in-process dict."""
+    slug = SLUGS[name]
+    if slug in _ESMC_CACHE_LOADED:
+        return
+    _ESMC_CACHE_LOADED.add(slug)
+    path = Path(__file__).resolve().parent / esmc_cache_path(name)
+    if not path.exists():
+        return
+    z = np.load(path, allow_pickle=True)
+    seqs = np.asarray(z['sequences'], dtype=object)
+    emb = np.asarray(z['emb'], dtype=np.float32)
+    for s, e in zip(seqs, emb):
+        _ESMC_MEM[str(s)] = e
+
+
+def _esmc_embed_missing(seqs):
+    """Embed novel sequences via the .venv-esmc subprocess. -> (M, 1152)."""
+    py = _esmc_python()
+    script = Path(__file__).resolve().parent / 'esmc_embed.py'
+    tmp = Path(tempfile.mkdtemp(prefix='esmc_predict_'))
+    sf, of = tmp / 'seqs.txt', tmp / 'emb.npz'
+    sf.write_text('\n'.join(seqs), encoding='utf-8')
+    env = os.environ.copy()
+    env.setdefault('HF_HUB_DISABLE_PROGRESS_BARS', '1')
+    r = subprocess.run([str(py), str(script),
+                        '--sequences-file', str(sf), '--out', str(of)],
+                       capture_output=True, text=True, env=env)
+    if r.returncode != 0:
+        raise RuntimeError(f'ESMC-600M embedding subprocess failed:\n'
+                           f'--- stdout ---\n{r.stdout}\n--- stderr ---\n{r.stderr}')
+    z = np.load(of, allow_pickle=True)
+    return np.asarray(z['emb'], dtype=np.float32)
+
+
+def get_esmc_embeddings(name, seqs):
+    """Return (len(seqs), ESMC_DIM) float32, row-aligned to ``seqs``.
+
+    Cached sequences resolve instantly; any novel ones are batched through the
+    ESMC subprocess exactly once and memoised.
+    """
+    _esmc_merge_endpoint_cache(name)
+    missing = [s for s in seqs if s not in _ESMC_MEM]
+    if missing:
+        extra = _esmc_embed_missing(missing)
+        for s, e in zip(missing, extra):
+            _ESMC_MEM[s] = e
+    return np.vstack([_ESMC_MEM[s] for s in seqs]).astype(np.float32)
 
 
 # --------------------------------------------------------------------------- #
@@ -134,6 +226,11 @@ def build_features(ep_name, sequences, smiles):
         if not clean:
             return None, 0, valid
         X = sequence_features(clean).astype(np.float32)
+        if ep.esmc:
+            # v4.1: append the frozen ESMC-600M embedding (row-aligned to
+            # `clean`) to the classical 428-dim features -> 1580-dim input.
+            emb = get_esmc_embeddings(ep_name, clean)
+            X = np.concatenate([X, emb], axis=1)
         return X, len(X), valid
     else:  # molecular
         valid = np.array([s is not None and str(s).strip() not in ('', 'nan', 'None')
@@ -252,7 +349,7 @@ def resolve_endpoints(args):
 # Main
 # --------------------------------------------------------------------------- #
 def main():
-    ap = argparse.ArgumentParser(description='v4.0 4-endpoint real-data predictor')
+    ap = argparse.ArgumentParser(description='v4.1 4-endpoint real-data + ESMC predictor')
     ap.add_argument('--sequence', type=str, default=None,
                     help='one-letter amino-acid sequence (for sequence endpoints)')
     ap.add_argument('--smiles', type=str, default=None,
