@@ -77,25 +77,65 @@ python peptide_admet_predictor.py --sequence "WALVKALVNHRISSSLVCG"
 Output (real, from this run):
 
 ```
+✅ Model loaded from peptide_admet_model (145,681 params, MixedADMETMLP, data: synthetic_demo)
+
 ======================================================================
-Peptide ADMET Prediction Results
+Peptide ADMET Prediction Results (v3.0, 9 endpoints)
 ======================================================================
-Sequence: WALVKALVNHRISSSLVCG  (17 aa)
-Features: 428 (AAC: 20, DPC: 400, physchem: 8)
 
-GI Absorption        p=0.7623  [LIKELY]      Good GI absorption
-Caco-2 Permeability  p=0.8410  [LIKELY]      Good Caco-2 permeability
-BBB Penetration      p=0.5531  [LIKELY]      May cross BBB
-Ames Mutagenicity    p=0.1204  [UNLIKELY]    Low mutagenicity risk
-hERG Inhibition      p=0.3019  [UNLIKELY]    Low hERG risk
+Sequence: WALVKALVNHRISSSLVCG
+Length: 19 amino acids
+Features: 428 (AAC 20 + DPC 400 + PhysChem 8)
+----------------------------------------------------------------------
 
-Composite score (multi-objective, higher = better): 0.4986
+📊 GI_absorption  [binary]
+   Probability: 0.1353  [████░░░░░░░░░░░░░░░░░░░░░░░░░░░░]
+   Prediction: 低腸胃吸收 (Poor GI absorption)
+   Risk: ⚠️ 需優化 (Needs Optimization)
 
-Model (measured, from metrics.json):
-  type: MultiTaskPeptideADMET (PyTorch MLP, 144133 params)
-  split: homology-controlled (AMPBench-MT style)
-  macro AUC: 0.8684   mean accuracy: 0.7836
-  data: synthetic demo (see data/peptide_admet_demo.meta.json)
+📊 Caco2_permeability  [binary]
+   Probability: 0.9571  [████████████████████████████░░]
+   Prediction: 高腸道穿透性 (Good Caco-2)
+   Risk: ✅ 優秀 (Excellent)
+
+📊 BBB_penetration  [binary]
+   Probability: 0.1157  [███░░░░░░░░░░░░░░░░░░░░░░░░]
+   Prediction: 無法穿透血腦屏障 (Poor BBB)
+   Risk: ⚠️ 需優化 (Needs Optimization)
+
+🧬 Ames_mutagenicity  [binary]
+   Probability: 0.4054  [████████████░░░░░░░░░░░░░░░░░░]
+   Prediction: 安全（非致突變）(Non-mutagenic)
+   Risk: ⚠️ 中等風險 (Moderate)
+
+❤️ hERG_inhibition  [binary]
+   Probability: 0.9499  [████████████████████████████░░]
+   Prediction: 潛在心毒性風險 (hERG risk)
+   Risk: ❌ 高風險 (High Risk)
+
+❤️ toxicity_binary  [binary]
+   Probability: 0.9207  [███████████████████████████░░░]
+   Prediction: 有細胞毒性 (Cytotoxic)
+   Risk: ❌ 高風險 (High Risk)
+
+❤️ toxicity_type  [multiclass]
+   Predicted: Class 3: neurotoxic  (confidence 0.428)
+   Top-3 classes: c3:0.43, c0:0.15, c1:0.14
+   Risk: ❌ 毒性類型 3 (P=0.43)
+
+❤️ neurotoxicity_type  [multiclass]
+   Predicted: Class 3: neurotoxic_C  (confidence 0.681)
+   Top-3 classes: c3:0.68, c2:0.14, c1:0.11
+   Risk: ❌ 毒性類型 3 (P=0.68)
+
+☣️ HC50  [regression]
+   HC50 ≈ 1.14 (scale 0.5–3.0; lower = more potent)
+   Risk: ❌ 高毒性 (High potency)
+
+----------------------------------------------------------------------
+Composite multi-objective score: 0.1742  (geometric mean of favourability across composite endpoints)
+Measured on homology-controlled (AMPBench-MT-style, arXiv:2607.25518) split (synthetic_demo data, 20996 train): mean metric = 0.7189
+NOTE: Training data is the synthetic demo set / external rows — numbers validate the pipeline, not real-peptide performance.
 ======================================================================
 ```
 
@@ -148,13 +188,16 @@ validation mixed loss. No ensemble, no Random Forest.
 
 ### Composite Score
 
-Geometric mean of the per-endpoint "favourability" (higher = better):
+Geometric mean of each *composite* endpoint's "favourability" (higher =
+better). BBB penetration is reported for context but excluded from the
+composite (crossing the BBB is a property, not a defect, for non-CNS drugs).
 
 ```
-favourability = p for GI/Caco-2/BBB, 1-p for Ames/hERG/toxicity_binary,
+favourability = p for GI/Caco-2 (higher = better),
+                1-p for Ames/hERG/toxicity_binary (higher = worse),
                 P(class 0) for toxicity_type & neurotoxicity_type,
                 exp(-HC50 / 1.0) for HC50 (higher HC50 = less potent = better)
-score = ( Π favourability_i )^(1/N)
+score = ( Π favourability_i )^(1/N),  N = number of composite endpoints
 ```
 
 A single poor endpoint drags the score down.

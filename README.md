@@ -326,8 +326,9 @@ out = predictor.predict("WALVKALVNHRISSSLVCG")
 # one sequence per line in candidates.txt
 python peptide_admet_predictor.py --sequences candidates.txt --rank
 # rows sorted by composite score (geometric mean of favourability across
-# the composite endpoints: GI+, Caco2+, BBB+, Ames-low, hERG-low,
+# the composite endpoints: GI+, Caco2+, Ames-low, hERG-low,
 # toxicity-low, toxType-class0, neurotox-class0, HC50-high)
+# (BBB is reported for context but not penalised — see endpoint_config.py)
 ```
 
 ### Example 3: Model Provenance (no hardcoded numbers)

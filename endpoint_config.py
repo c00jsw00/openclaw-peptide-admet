@@ -78,12 +78,20 @@ class Endpoint:
 # --------------------------------------------------------------------------- #
 ENDPOINTS: List[Endpoint] = [
     # ---- original 5 binary (openclaw-native) ----------------------------- #
+    # NOTE direction: GI absorption & Caco-2 permeability are FAVORABLE when
+    # high (good oral delivery) -> higher_is_worse=False. BBB penetration is
+    # desirable for CNS drugs (neutral otherwise) -> higher_is_worse=False;
+    # it is reported for context but NOT penalised in the composite, because
+    # crossing the BBB is a property, not a defect, for non-CNS drugs.
     Endpoint('GI_absorption', KIND_BINARY, 1, None, None,
-             'Oral GI absorption (fraction absorbed > threshold)'),
+             'Oral GI absorption (fraction absorbed > threshold)',
+             in_composite=True, higher_is_worse=False, risk_direction='prob'),
     Endpoint('Caco2_permeability', KIND_BINARY, 1, None, None,
-             'Caco-2 cell-line permeability (high vs low)'),
+             'Caco-2 cell-line permeability (high vs low)',
+             in_composite=True, higher_is_worse=False, risk_direction='prob'),
     Endpoint('BBB_penetration', KIND_BINARY, 1, None, None,
-             'Blood-brain barrier penetration (high vs low)'),
+             'Blood-brain barrier penetration (high vs low)',
+             in_composite=False, higher_is_worse=False, risk_direction='prob'),
     Endpoint('Ames_mutagenicity', KIND_BINARY, 1, None, None,
              'Ames mutagenicity (mutagenic vs not)',
              in_composite=True, higher_is_worse=True, risk_direction='prob'),
