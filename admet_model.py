@@ -3,24 +3,29 @@
 admet_model.py
 ==============
 
-Shared model definitions for the peptide ADMET pipeline (v3.0), so the
-trainer and predictor always agree on architecture and save format.
+Shared model definitions for the peptide ADMET pipeline (v4.0 real-data
+edition), so the trainer and predictor always agree on architecture and save
+format.
 
-Two model classes
------------------
-* ``ADMETMLP``      — the original single-trunk, 5 binary sigmoid heads.
-  Kept for loading pre-v3.0 checkpoints (``admet_mlp.pt``) so old artifacts
-  remain reproducible.
+Model class
+-----------
+* ``MixedADMETMLP`` — the v4.0 model: one shared trunk feeding task heads.
+  The class is **generic** (parameterized by ``input_dim`` + ``endpoints`` +
+  per-endpoint kinds), and in v4.0 it is instantiated **once per endpoint** as
+  a single-head model, because the four real-data endpoints (Hemolysis,
+  Half-life, Caco-2, PAMPA/MDCK) are disjoint molecule sets spanning two input
+  modalities:
 
-* ``MixedADMETMLP`` — the v3.0 model: one shared trunk feeding three kinds of
-  task heads, matching the 9-endpoint mixed set in ``endpoint_config.py``:
-
-    - 6  binary      heads  (5 ADME/safety + pepADMET toxicity_binary)
-    - 2  multiclass  heads  (toxicity_type: 6-way, neurotoxicity_type: 4-way)
-    - 1  regression  head   (HC50)
+    - binary     head  — Hemolysis (sigmoid)
+    - regression head  — Half-life (log10 s), Caco-2 (logPapp),
+                         PAMPA/MDCK (logPapp) (identity)
 
   Each head has its own Linear layer, so tasks are coupled only through the
-  shared trunk (a standard multi-task design).
+  shared trunk (a standard multi-task design). ``input_dim`` is 428 for the
+  sequence endpoints and 2,265 for the molecular endpoints.
+
+* ``ADMETMLP`` — the original single-trunk, 5 binary sigmoid heads, kept only
+  for backward-compatible loading of pre-v3.0 checkpoints (none ship with v4.0).
 
 Save format (a single torch file)
 ---------------------------------

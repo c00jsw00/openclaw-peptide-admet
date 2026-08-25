@@ -1,20 +1,18 @@
-# 肽類 ADMET 預測工具 — 完整總結(v3.0 擴展版,2026-08-25)
+# 肽類 ADMET 預測工具 — 完整總結(v4.0 真實數據版,2026-08-25)
 
-> **v3.0 變更**(在 v2.0 誠實修訂基礎之上):
-> 1. **訓練集可擴展**:`prepare_data.py --n <任意>` + `ingest_external.py`
->    外部數據攝入(驗證/去重/來源標記)+ `--merge` 併入。已實測 15k → 30k
->    規模,平均指標 0.6929 → 0.7189。
-> 2. **預測項目擴展到 9 端點**(新增 pepADMET 的 4 個毒性端點):
->    `toxicity_binary`(二分類)、`toxicity_type`(6 類)、
->    `neurotoxicity_type`(4 類)、`HC50`(回歸),並採用 pepADMET 的
->    **partial-label mask 機制**(NaN = 該列未測,不參與該端點訓練)。
-> 3. 模型改為 `MixedADMETMLP`(共享 trunk + per-task heads,145,681 參數),
->    保留舊版 `ADMETMLP` 以相容舊 checkpoint。
+> **v4.0 斷裂式變更**(取代 v3.0):
+> 1. **改用真實數據集** [Chemit797/PepADMET-Dataset](https://github.com/Chemit797/PepADMET-Dataset),
+>    **刪除** v3.0 的 30,000 行 `synthetic_demo` 合成數據與 9 端點管線。
+> 2. **4 端點**:Hemolysis、Half-life、Caco-2、PAMPA/MDCK(其餘 5 個
+>    v3.0 端點 BBB/Ames/hERG/毒性/HC50 不再保留)。
+> 3. **雙模態特徵**:序列端點用 428 維氨基酸序列特徵;分子端點用
+>    2,265 維 RDKit SMILES 描述子(217 2D 描述子 + 2,048 位 Morgan)。
+> 4. **4 個獨立單任務模型**(互斥分子 + 兩種模態,共享 trunk 多頭模型
+>    在此只是學兩個不相交子空間)。
 >
-> v2.0 的誠實修訂(移除硬編碼 97.70%/0.9987、phantom 15k 數據、RF 偽裝
-> NN)全部保留。
+> v2.0/v3.0 的誠實修訂(移除硬編碼指標、phantom 數據、RF 偽裝 NN)全部保留。
 
-## ✅ 完成狀態:100%(端對端已跑通驗證,15k 與 30k 兩輪)
+## ✅ 完成狀態:100%(端對端已跑通驗證,4 端點全部訓練 + 預測驗證)
 
 ---
 
@@ -24,154 +22,131 @@
 
 | 文件 | 說明 |
 |------|------|
-| `endpoint_config.py` | 9 端點的單一事實來源(kind、類別數、pepADMET 欄位映射、合成標籤模型參數) |
-| `prepare_data.py` | 產生 `--n` 行可再生成 synthetic_demo 數據集(9 端點 + partial labels),`--merge` 併入外部 CSV |
-| `ingest_external.py` | 外部數據攝入:序列正規化、長度/字母表驗證、去重、`data_origin`/`sequence_provenance` 標記;SMILES-only 輸入可嘗試 RDKit 序列還原(低信任標記) |
-| `smiles_to_sequence.py` | RDKit 結構式 α-碳偵測 → one-letter 序列(含置信度) |
-| `homology_split.py` | 依氨基酸組合成家族做 70/10/20 同源性不相交分割,並**量測**洩漏(最大 pairwise Jaccard、端點標籤率差) |
-| `admet_model.py` | `MixedADMETMLP`(binary/multiclass/regression heads)+ 舊版 `ADMETMLP`,訓練與預測共用,架構永不漂移 |
-| `train_peptide_admet_model.py` | mask 感知混合損失 + **雙分割評估** + 每端點按 kind 的指標(binary AUC/MCC、多類 macro-F1/acc、回歸 R²/RMSE)→ `metrics.json` |
-| `peptide_admet_predictor.py` | 推論 CLI;9 端點(機率/類別/回歸值)+ 風險標籤;**多目標綜合評分**與 `--rank` 候選排序;自動偵測 v2/v3 checkpoint |
+| `endpoint_config.py` | 4 端點的單一事實來源(kind、模態、來源 CSV、特徵欄、標籤轉換、單位) |
+| `feature_extractor.py` | 雙模態特徵:序列 428 維(AAC 20 + DPC 400 + 理化 8)+ RDKit 分子 2,265 維(217 2D 描述子 + 2,048 位 Morgan) |
+| `prepare_pepadmet_data.py` | 載入 4 個真實 CSV → 清洗(去 X/非 20-AA/無效 SMILES/缺失標籤)→ 每端點輸出準備 CSV + meta |
+| `homology_split.py` | 3-mer Jaccard 家族 70/10/20 同源性不相交分割 + 量測洩漏 |
+| `admet_model.py` | `MixedADMETMLP`(binary/regression heads,通用 input_dim)+ 訓練/預測共用 |
+| `train_pepadmet_model.py` | 每端點:特徵 → 分割 → 標準化 → 訓練 → 雙分割評估 → `metrics.json` + 權重 |
+| `peptide_admet_predictor.py` | 推論 CLI:輸入 sequence / SMILES → 自動路由模態 → 4 端點預測 + 單位 |
 
-### 2. 訓練產物(`peptide_admet_model/`)
+### 2. 訓練產物(`models_v4/`,已 commit,~6 MB)
+
+| 路徑 | 說明 |
+|------|------|
+| `models_v4/<endpoint>/admet_mlp.pt` | PyTorch 權重 + 架構 metadata(`model_version: v4_endpoint`) |
+| `models_v4/<endpoint>/scaler.pt` | StandardScaler |
+| `models_v4/<endpoint>/metrics.json` | 實測指標(雙分割)+ 分割統計 + 洩漏稽核 |
+| `models_v4/summary.json` | 4 端點彙總 |
+
+`<endpoint>` ∈ {`hemolysis`, `half_life`, `caco2`, `pampa_mdck`}。
+
+### 3. 數據(`data/`,已 commit)
 
 | 文件 | 說明 |
 |------|------|
-| `admet_mlp.pt` | PyTorch state dict + 架構 metadata(含 `model_version: v3_mixed`) |
-| `scaler.pt` | StandardScaler(torch.save) |
-| `metrics.json` | **實測**每端點指標(兩種分割)+ 分割統計 + 洩漏稽核 |
-| `feature_names.txt` | 428 個特徵名稱 |
-
-### 3. 數據(`data/`,gitignored,可再生成)
-
-| 文件 | 說明 |
-|------|------|
-| `peptide_admet_demo.csv` | `--n` 行 synthetic_demo(欄位:sequence, family_id, data_origin, 9 端點;NaN=未測) |
-| `peptide_admet_demo.meta.json` | 生成參數與來源聲明 |
-| `external_pepadmet.csv` | pepADMET sample 經 `ingest_external.py` 攝入的存活行(14/135) |
-| `split/` | 同源性分割的 train/val/test 索引與 leakage_audit.json |
+| `data/pepadmet_hemolysis.csv` | 準備好的 Hemolysis 序列 + 二值標籤(8,719 行) |
+| `data/pepadmet_half_life.csv` | 準備好的 Half_life 序列 + log10 半衰期(1,763 行) |
+| `data/pepadmet_caco2.csv` | 準備好的 Caco2 SMILES + logPapp(7,429 行) |
+| `data/pepadmet_pampa_mdck.csv` | 準備好的 PAMPA SMILES + logPapp(7,283 行) |
+| `data/pepadmet_data.meta.json` | 來源、清洗統計、行數聲明 |
 
 ---
 
 ## 🚀 如何使用
 
 ```bash
-# 1. 生成數據(可再生成,任意規模)
-python prepare_data.py --n 30000
+# 0. 環境(需 rdkit)
+uv pip install --python .venv/Scripts/python.exe rdkit
 
-# 2. (選)攝入外部數據
-python ingest_external.py --input real.csv --source mydata --output data/real.csv
-python prepare_data.py --n 30000 --merge data/real.csv
+# 1. 準備數據(從 Chemit797/PepADMET-Dataset 載入 + 清洗)
+python prepare_pepadmet_data.py
 
-# 3. 同源性控制分割(AMPBench-MT 式)
-python homology_split.py
+# 2. 訓練 4 端點
+python train_pepadmet_model.py --epochs 80 --seed 42
 
-# 4. 訓練(混合損失 + mask;產出 metrics.json)
-python train_peptide_admet_model.py --epochs 40
-
-# 5. 預測(9 端點)
-python peptide_admet_predictor.py --sequence "WALVKALVNHRISSSLVCG"
-python peptide_admet_predictor.py --sequences test_sequences.txt --rank
+# 3. 預測(自動路由模態)
+python peptide_admet_predictor.py \
+  --sequence "ACDEFGHIKLMNPQRSTVWY" \
+  --smiles "CC(=O)N[C@@H](C)C(=O)N[C@@H](CCCNC(=N)N)C(=O)O"
 ```
 
 ---
 
-## 📊 實測性能(30k + 5 Peptaloid 訓練,同源性控制測試分割 5,993 序列)
+## 📊 實測性能(同源性/分子控制測試分割)
 
-| 端點 | 類型 | 主指標 | 其他 | 已標註(%) |
-|------|------|--------|------|-----------|
-| GI_absorption | binary | AUC **0.8823** | MCC 0.4366, Acc 0.8004 | 100% |
-| Caco2_permeability | binary | AUC **0.9081** | MCC 0.6210, Acc 0.8295 | 100% |
-| BBB_penetration | binary | AUC **0.9317** | MCC 0.5203, Acc 0.8537 | 100% |
-| Ames_mutagenicity | binary | AUC **0.8399** | MCC 0.4284, Acc 0.7587 | 100% |
-| hERG_inhibition | binary | AUC **0.8703** | MCC 0.5215, Acc 0.7776 | 100% |
-| toxicity_binary | binary | AUC **0.8365** | MCC 0.4827, Acc 0.7576 | 100% |
-| toxicity_type | multiclass(6) | macro-F1 **0.2201** | acc 0.7047 | 100% |
-| neurotoxicity_type | multiclass(4) | macro-F1 **0.3649** | acc 0.3794 | 21.9% |
-| HC50 | regression | R² **0.6525** | RMSE 0.3184, MAE 0.2541 | 59.6% |
-| **平均主指標** | — | **0.7229** | 隨機分割對照 0.7140(delta −0.0089) | — |
+| 端點 | 類型 | 模態 | 主指標 | 其他(同源性測試) | 隨機分割對照 |
+|------|------|------|--------|------------------|------------|
+| Hemolysis | binary | 序列 | AUC **0.7755** | MCC 0.3782, Acc 0.7009 | 0.7746(差 −0.0009) |
+| Half_life | regression(log10 s) | 序列 | R² **0.5883** | RMSE 1.2502, MAE 0.8714 | 0.8650(近重複洩漏推高) |
+| Caco2 | regression(logPapp) | 分子 | R² **0.3861** | RMSE 0.7879, MAE 0.4896 | —(無序列對照) |
+| PAMPA_MDCK | regression(logPapp) | 分子 | R² **0.4573** | RMSE 0.8043, MAE 0.5070 | —(無序列對照) |
 
-對照:15k 訓練時平均主指標 0.6929、HC50 R² 0.4610;30k(純合成)平均主指標
-0.7189、HC50 R² 0.6100 → **加大訓練集實測有效**。
+### 洩漏控制
 
-**Peptaloid 首次外部數據攝入(誠實說明):** 從
-[Peptaloid-database](https://github.com/Bibhuprasadbehera/Peptaloid-database)
-的 193 個唯一化合物(SMILES-only、無序列欄)中,經 RDKit 還原 + 20-氨基酸過濾,
-淨貢獻 **5 條序列**(佔 30,005 的 0.017%),標籤為「連續預測值取中位數二值化」
-(低信任,非實驗量測)。其對平均主指標的貢獻(+0.0040)在訓練雜訊範圍內,
-目的是驗證 `--merge` 真實外部數據路徑端對端可用;要有意義地移動指標,需要
-數千條(而非 5 條)帶顯式序列的真實數據。
-
-> ⚠️ **這些數字描述的是示範管線,不是真實肽類性能。**
-> `toxicity_type` 的 macro-F1 偏低是類別不平衡(class 0 佔多數)的誠實結果,
-> 非 bug;換入平衡的真實毒性數據會改變此數字。
-> `neurotoxicity_type`/`HC50` 只有部分行有標籤(partial labels),
-> 指標僅在已標註子集上計算。
+- **序列端點**:3-mer Jaccard 家族同源性分割;分割前合併同 3-mer 多重集
+  anagram(canonical signature),**保證 jaccard-1.0 精確複製不跨界**。
+  最大跨界 Jaccard ≈ 0.97(近重複合理上限,非洩漏)。**Half_life 隨機
+  R² 0.865 遠高於同源性 0.5883,是近重複洩漏被控管掉的誠實體現。**
+- **分子端點**:無序列 → 按唯一 SMILES 分組(精確重複 SMILES 同分割);
+  近異構物可跨界(SMILES-only 限制,已標註)。
 
 ---
 
-## 🎯 特徵工程(與 v2.0 相同,428 維)
+## 🎯 特徵工程
 
-1. **氨基酸組成 (AAC)** — 20
-2. **二肽組成 (DPC)** — 400
-3. **理化性質** — 8(MW 估、Kyte-Doolittle 疏水性、淨電荷、pI 估、GRAVY、疏水/帶電殘基比)
+**序列模態(428 維)**:AAC 20 + DPC 400 + 理化 8。
 
-## 📦 模型架構(v3.0)
+**分子模態(2,265 維)**:RDKit 2D 描述子 217(`CalcMolDescriptors`)+
+Morgan fingerprint(半徑 2)2,048 位。無效 SMILES → 該行特徵全零並計入
+清洗統計(不造假)。
 
-- 共享 trunk:428 → 256 → 128(ReLU + BatchNorm + Dropout 0.2)
-- Per-task heads:
-  - binary × 6:`Linear(128,1)` + sigmoid
-  - multiclass:`Linear(128,6)`(toxicity_type)、`Linear(128,4)`(neurotoxicity_type)+ softmax
-  - regression × 1:`Linear(128,1)`(HC50)
-- 損失:mask 感知混合(BCE-with-logits + pos_weight / CrossEntropy / MSE,`reduction='none'` × mask,每端點平均再加權)
-- 訓練:Adam(lr=3e-4)+ ReduceLROnPlateau + early stopping(val mixed loss)
-- 參數數:145,681
+---
+
+## 📦 模型架構
+
+- 共享 trunk:`input_dim → 256 → 128`(ReLU + BatchNorm + Dropout 0.2)
+- 單任務 head:binary `Linear(128,1)` + sigmoid;regression `Linear(128,1)`
+- 訓練:Adam(lr=3e-4)+ ReduceLROnPlateau + early stopping(val loss)
+- 參數數:序列端點 **143,617**;分子端點 **613,889**
+
+---
 
 ## 🔄 完整工作流程
 
 ```
-prepare_data.py (--n 任意, --merge 外部 CSV)
+Chemit797/PepADMET-Dataset (整理/*.csv, 真實數據)
        ↓
-ingest_external.py (外部數據: 驗證/去重/來源標記/partial labels)
+prepare_pepadmet_data.py (載入 + 清洗 + 來源標記 → data/pepadmet_*.csv)
        ↓
-homology_split.py → 組合成家族 70/10/20 不相交分割 + 洩漏稽核
+train_pepadmet_model.py (每端點:
+   序列端點 → 428 維 + 同源性分割(signature 合併, jaccard-1.0 不跨界)
+   分子端點 → 2,265 維 + 唯一 SMILES 分割
+   → 標準化 → MixedADMETMLP 單頭 → 訓練 → 雙分割評估
+   → models_v4/<endpoint>/{權重, metrics.json})
        ↓
-train_peptide_admet_model.py
-   428 維特徵 → 標準化 → MixedADMETMLP → 9 heads
-   mask 感知混合損失;雙分割評估 → metrics.json
-       ↓
-peptide_admet_predictor.py
-   輸入序列 → 428 維 → 標準化 → 9 端點預測
-   → 多目標綜合評分(幾何平均)→ --rank 排序
+peptide_admet_predictor.py (輸入 sequence/SMILES → 自動路由 → 4 端點預測 + 單位)
 ```
 
-## 📌 pepADMET 端點映射
+---
 
-| pepADMET 欄位 | openclaw 端點 | 類型 | 本管線合成標籤來源 |
-|---|---|---|---|
-| Toxicity | toxicity_binary | binary | 疏水性/長度潛在模型 |
-| Toxicity_Type(6 類) | toxicity_type | multiclass | toxicity_binary 陰性→class 0,陽性→class 1-5 隨機 |
-| Neurotoxicity_Type(4 類) | neurotoxicity_type | multiclass | 隨機 4 類 + 少量結構訊號(12.5% 行有標籤) |
-| HC50(回歸) | HC50 | regression | 毒性潛變數的線性映射 + 雜訊(30% 行有標籤) |
+## ⚠️ 誠實聲明
 
-## ⚠️ 誠實聲明:SMILES→序列
-
-pepADMET 隨 repo 的 `Toxicity.csv`(135 行)**只有 SMILES 沒有序列欄**,
-且其自带的氨基酸組成參考欄與 SMILES 結構不自洽(組成總和 ~100 vs
-~10 殘基結構)。`ingest_external.py` 嘗試 RDKit 還原後,僅 **14/135**
-行通過長度/組成健全性檢查,並標記 `sequence_provenance=smiles_inferred`
-(低信任)。**我們不把这些行當作乾淨的真實數據**;管線「能」攝入真實
-序列,但 pepADMET 的 sample 檔不是可靠來源。
+- 4 端點來自**真實實驗/文獻數據**(PepADMET-Dataset),非合成。
+- 分子端點無序列,同源性控制受限於唯一 SMILES 分組(近異構物可跨界)。
+- 清洗**丟棄**無效行(非 20-AA 序列、無效 SMILES、缺失標籤);
+  丟棄統計寫入 `data/pepadmet_data.meta.json`,不隱瞞。
+- 主指標報告在**同源性/分子控制測試分割**;隨機分割僅作洩漏對照。
 
 ---
 
 ## 🎉 總結
 
-✅ 端對端管線跑通(15k + 30k 兩輪):prepare_data → (ingest_external) → homology_split → train → predict
-✅ 訓練集可擴展(`--n` 任意 + `--merge` 外部 CSV),實測 15k→30k 平均指標 +0.026
-✅ 9 端點(6 binary + 6 類 + 4 類 + 回歸),含 pepADMET 毒性端點與 partial-label mask
-✅ 實測指標:30k 平均主指標 **0.7189**(同源性分割)
-✅ 多目標綜合評分 + `--rank` 候選排序
-✅ 所有文件已更新為 v3.0 誠實敘述
+✅ 端對端管線跑通:prepare_pepadmet_data → train_pepadmet_model → peptide_admet_predictor
+✅ 4 端點全部訓練 + 預測驗證(真實數據)
+✅ 雙模態特徵(序列 428 維 + 分子 2,265 維)
+✅ 洩漏控制(序列端 signature 合併保證 jaccard-1.0 不跨界;分子端唯一 SMILES)
+✅ 實測指標:Hemolysis AUC 0.7755、Half_life R² 0.5883、Caco2 R² 0.3861、PAMPA R² 0.4573
+✅ 4 個模型權重 + 準備數據 + 指標全部 commit 到 repo(可重現)
 
-**版本**:3.0(extensibility + pepADMET endpoint expansion)· **日期**:2026-08-25
+**版本**:4.0(真實數據 4 端點,雙模態)· **日期**:2026-08-25

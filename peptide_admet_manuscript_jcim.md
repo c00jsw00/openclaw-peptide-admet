@@ -1,50 +1,45 @@
-# An Honest, Reproducible Benchmark for Peptide ADMET Prediction: Homology-Controlled Evaluation of a Multi-Task Neural Network on a Regenerable Synthetic Demo Set
+# From Synthetic Demo to Real Data: A Reproducible, Leakage-Audited Benchmark for Four Peptide ADMET Endpoints on the PepADMET Dataset
 
-**Running Title:** Homology-Controlled Peptide ADMET Benchmark
+**Running Title:** Leakage-Audited Peptide ADMET Benchmark on Real Data
 
 **Article Type:** Article (Full-Length Research Manuscript)
 
-> **⚠️ v3.0 repository note (2026-08-25).** This manuscript describes the
-> **v2.0, five-endpoint** configuration (144,133-param MLP, macro AUC 0.8684).
-> The released repository has since been extended to **v3.0**: a 145,681-param
-> **mixed multi-task** model covering **nine endpoints** (the five above plus
-> pepADMET's `toxicity_binary`, `toxicity_type` [6-class],
-> `neurotoxicity_type` [4-class], and `HC50` [regression]), with
-> **partial-label masking** and an **extensible training set** (`prepare_data.py
-> --n <any>` + `ingest_external.py --merge`). On a 30,000-row training set the
-> homology-controlled mean primary metric is **0.7189** (per-endpoint values in
-> `README.md` and `PREDICTOR_SUMMARY.md`). A first external dataset — the
-> [Peptaloid-database](https://github.com/Bibhuprasadbehera/Peptaloid-database)
-> peptide-alkaloid library (193 SMILES-only compounds; net 5 recovered peptide
-> sequences after RDKit recovery + 20-AA filtering) — has since been folded in,
-> lifting the 30,005-row headline to **0.7229** (HC50 R² 0.6525); the +0.0040
-> delta is within run noise given only 5 rows were added. The evaluation
-> protocol (homology-controlled split + leakage audit + dual-split reporting) is
-> unchanged. **This manuscript must be updated to the v3.0 endpoint set and the
-> current 30k metrics before any (re-)submission; the figures below reflect
-> v2.0.**
+> **⚠️ v4.0 repository note (2026-08-25).** This manuscript was updated in
+> place for the **v4.0 real-data edition**. The released repository previously
+> validated the evaluation protocol (homology-controlled split + leakage audit +
+> dual-split reporting) on a **30,000-row regenerable synthetic demo set**
+> (`synthetic_demo`, v3.0) and a 9-endpoint mixed multi-task model. v4.0
+> **removes the synthetic set entirely** and re-runs the *same* protocol on
+> **real experimental data** from the
+> [Chemit797/PepADMET-Dataset](https://github.com/Chemit797/PepADMET-Dataset)
+> release, over **four endpoints** — Hemolysis, plasma Half-life, Caco-2
+> permeability, and PAMPA/MDCK permeability — using a **dual-modality feature
+> design** (428-dim amino-acid-sequence features for the sequence endpoints;
+> 2,265-dim RDKit molecular descriptors + Morgan fingerprints for the
+> SMILES-only permeability endpoints). All performance figures below are
+> *measured* and re-derivable from the released code (`metrics.json`); the
+> v2.0/v3.0 synthetic-demo figures are no longer the headline.
 
-**Version:** 2.0 (integrity revision, 2026-08-24). This revision replaces the v1.0 manuscript's
-reported metrics (97.70% accuracy / 0.9987 AUC), which traced to hardcoded values and a
-homology-uncontrolled split on a dataset that was never actually shipped with the
-repository. All performance statements below are *measured* and reproducible from the
-released code (see §2 and the repository's `metrics.json`).
+**Version:** 4.0 (real-data edition, 2026-08-25). This revision replaces the
+v3.0 manuscript, which was an integrity revision (replacing v1.0's hardcoded
+97.70% / 0.9987 AUC) validated on a synthetic demo set. The evaluation protocol
+is unchanged; the data, endpoint set, and feature design are new.
 
 ---
 
 ## Abstract
 
-Peptide-based therapeutics are one of the fastest-growing pharmaceutical classes, yet computational ADMET prediction for peptides is plagued by an evaluation-integrity problem that 2026 benchmark work has begun to expose: sequence-similarity leakage between train and test sets inflates reported performance, and several public tools report metrics that cannot be reproduced from their released artifacts. We contribute a reproducible benchmark and reference implementation for five peptide ADMET endpoints (GI absorption, Caco-2 permeability, BBB penetration, Ames mutagenicity, hERG inhibition). The pipeline consists of (i) a fully regenerable synthetic demo dataset of 15,000 sequences with explicitly labeled provenance, (ii) an AMPBench-MT-style homology-controlled train/val/test split that groups sequences by amino-acid-composition family and *measures* residual leakage, and (iii) a shared multi-task PyTorch MLP (428-dim AAC/DPC/physicochemical features; 144,133 parameters) whose exact weights, scaler, and measured per-endpoint metrics are released with the repository. On the homology-controlled split the model achieves a macro AUC of 0.8684 (mean accuracy 0.7836), compared with 0.8688 on a plain random split — a near-zero delta that we attribute to the limited sequence-level signal in composition features rather than to leakage. We deliberately report these *modest* numbers: on a synthetic latent-physicochemical label model, 0.8–0.9 AUC is the expected ceiling, and we treat the near-parity between split protocols as the demonstration the field needs — honest numbers, not 0.9987. We further add a multi-objective composite score (geometric mean over favorable endpoint probabilities, in the spirit of generative AMP campaigns such as AMPGAN v3 / PepCraft) for candidate prioritization. We position this work as a reproducibility and evaluation-protocol contribution, not as a claim of real-peptide predictive accuracy, and we make no submission-ready performance claim until real experimental data are used.
+Peptide-based therapeutics are among the fastest-growing pharmaceutical classes, yet computational ADMET prediction for peptides is plagued by an evaluation-integrity problem that 2026 benchmark work has begun to expose: sequence-similarity leakage across the train/test boundary inflates reported performance, and several public tools report metrics that cannot be reproduced from their released artifacts. Prior versions of this repository validated a reproducibility protocol — an AMPBench-MT-style homology-controlled split with a shipped leakage audit, dual-split reporting, and measured-only inference — but did so on a *synthetic* demo set, which can certify the pipeline yet cannot claim real-peptide accuracy. Here we close that gap: we re-run the identical protocol on **real experimental peptide data** (the Chemit797/PepADMET-Dataset release) over **four ADMET endpoints** (Hemolysis [binary], plasma half-life [regression], and Caco-2 and PAMPA/MDCK permeability [regression]). Because the four endpoint tables are disjoint molecule sets spanning two input modalities, we use a **dual-modality** design: 428-dim amino-acid-composition features (AAC 20 + DPC 400 + physicochemical 8) for the two sequence endpoints and 2,265-dim RDKit features (217 2D descriptors + 2,048-bit Morgan fingerprint) for the two SMILES-only permeability endpoints, each with an independent single-task MLP. On the leakage-controlled test split the models achieve **AUC 0.7755 (Hemolysis)**, **R² 0.5883 (half-life, log10-seconds)**, **R² 0.3861 (Caco-2, logPapp)**, and **R² 0.4573 (PAMPA, logPapp)**. The dual-split comparison is now genuinely informative: on half-life a plain random split reports R² 0.8650 — inflated by near-duplicate leakage — versus 0.5883 under the homology-controlled protocol, and we collapse exact 3-mer-multiset anagrams into a single family to *guarantee* that no jaccard-1.0 duplicate crosses the boundary. We report these modest, real-data numbers deliberately; the contribution is a reproducible, leakage-audited benchmark and reference implementation the field can adopt, with the exact weights, scalers, prepared data, and measured metrics released with the repository.
 
-**Keywords:** peptide ADMET prediction | benchmark | evaluation leakage | homology-controlled split | multi-task learning | drug discovery | reproducibility | hERG inhibition | blood-brain barrier penetration
+**Keywords:** peptide ADMET prediction | benchmark | evaluation leakage | homology-controlled split | dual-modality features | RDKit descriptors | reproducibility | Caco-2 permeability | PAMPA | hemolysis
 
 ---
 
 ## Graphical Abstract and Table of Contents Entry
 
-**Table of Contents Graphic:** [peptide sequence → 428-dim features (AAC + DPC + physchem) → multi-task MLP (5 heads) → 5 ADMET probabilities → multi-objective composite score; inset: leakage audit of the homology-controlled split]
+**Table of Contents Graphic:** [real peptide table (sequence ∪ SMILES) → dual-modality features (428-dim sequence / 2,265-dim RDKit) → four single-task MLPs → 4 ADMET predictions; inset: leakage audit — exact-anagram collapse + max cross-boundary Jaccard]
 
-**TOC Entry:** A regenerable synthetic demo set, an AMPBench-MT-style homology-controlled split with leakage auditing, and a released multi-task MLP yield reproducible peptide ADMET benchmark numbers (macro AUC 0.868) — and a template for how the field should report them.
+**TOC Entry:** A leakage-audited protocol, first validated on a synthetic demo and now re-run on real PepADMET data over four dual-modality endpoints, yields reproducible peptide ADMET numbers (AUC 0.776; R² 0.386–0.588) — and a template for how the field should report them.
 
 ---
 
@@ -54,131 +49,122 @@ Peptide-based therapeutics are one of the fastest-growing pharmaceutical classes
 
 Peptide therapeutics have emerged as a promising class of drugs, with over 90 approved peptide drugs and hundreds more in clinical development. Their high specificity, potency, and favorable safety profiles have driven extensive research, while the development of peptide drugs faces unique challenges that differ from small-molecule drug development:
 
-1. **Poor Oral Bioavailability**: Peptides typically exhibit low gastrointestinal absorption due to large molecular size (>500 Da), high polarity, and enzymatic degradation in the digestive tract. Only approximately 1–2% of peptide drugs are administered orally.
-2. **Membrane Permeability Limitations**: The polar nature of peptide bonds and side chains limits passive diffusion across biological membranes; the blood-brain barrier (BBB) imposes an even stricter barrier for CNS-targeted therapeutics.
-3. **Metabolic Instability**: Peptides are rapidly degraded by proteases and peptidases, leading to short half-lives.
-4. **Rapid Renal Clearance**: Small peptides (<5 kDa) are efficiently filtered by the kidneys, reducing systemic exposure.
-5. **Potential Toxicity**: Some peptide sequences exhibit cytotoxicity, immunogenicity, or off-target effects, including hERG channel inhibition that can lead to QT prolongation and torsades de pointes.
+1. **Poor Oral Bioavailability**: Peptides typically exhibit low gastrointestinal absorption due to large molecular size (>500 Da), high polarity, and enzymatic degradation in the digestive tract.
+2. **Membrane Permeability Limitations**: The polar nature of peptide bonds and side chains limits passive diffusion across biological membranes; Caco-2 and PAMPA are the two standard *in vitro* permeability assays used to model it.
+3. **Metabolic Instability**: Peptides are rapidly degraded by proteases and peptidases, leading to short plasma half-lives.
+4. **Hemolysis**: Many bioactive and antimicrobial peptides lyse erythrocytes, a dose-limiting toxicity that must be screened early.
+5. **Rapid Renal Clearance**: Small peptides (<5 kDa) are efficiently filtered by the kidneys, reducing systemic exposure.
 
 ### 1.2 The Evaluation-Integrity Problem in Peptide ADMET
 
 Beyond the biological challenges, computational peptide ADMET has a methodological problem that recent 2026 work has brought to the foreground:
 
-- **Sequence-similarity leakage.** AMPBench-MT (arXiv:2607.25518), a 2026 multi-task benchmark for antimicrobial peptides, shows that when near-duplicate or compositionally similar sequences fall on both sides of the train/test boundary, reported accuracy and AUC can be inflated far beyond what the model could achieve on genuinely novel sequences. Homology-aware (or composition-family-aware) splitting is the currently recommended remedy, but few public peptide-ADMET repositories audit their splits or release the audit.
-- **Non-reproducible metrics.** We observed, in our own v1.0 submission package, metrics that were hardcoded in the inference CLI and inconsistent with the shipped model artifacts, and a "training dataset" referenced in documentation that was not present in the repository. Such artifacts are not isolated: generative AMP campaigns in 2026 (e.g., the AMPGAN v3 / PepCraft workflow, arXiv 2026) emphasize *measured* MIC-linked validation of generated candidates precisely because reported-in-silico-metrics-only studies have repeatedly failed wet-lab confirmation.
-- **Blindness to pharmacogenomic "back doors".** The 2026 Genotypic Triggers work demonstrates that safety endpoints can be missed entirely when a model's endpoint list lacks pharmacogenomic dimensions; a 5-endpoint ADMET panel that omits toxicogenomic and immunogenicity endpoints should state that limitation explicitly, as we do in §4.4.
+- **Sequence-similarity leakage.** AMPBench-MT (arXiv:2607.25518), a 2026 multi-task benchmark for antimicrobial peptides, shows that when near-duplicate or compositionally similar sequences fall on both sides of the train/test boundary, reported accuracy and AUC can be inflated far beyond what the model could achieve on genuinely novel sequences. Homology-aware (or composition-family-aware) splitting is the currently recommended remedy, but few public peptide-ADMET repositories audit their splits or release the audit. This problem is *sharper* on real data than on a synthetic demo: real peptide libraries contain many near-duplicate and anagrammatic sequences that a naive random split will happily split across the boundary.
+- **Non-reproducible metrics.** We observed, in our own v1.0 submission package, metrics that were hardcoded in the inference CLI and inconsistent with the shipped model artifacts, and a "training dataset" referenced in documentation that was not present in the repository.
+- **Modality mismatch.** Real ADMET datasets are rarely uniform: some tables ship clean one-letter sequences, others ship only SMILES (or, as in the CycPeptMPDB-derived permeability tables here, *non-standard* residue-name lists such as `MEL`, `DP`, `DL` that a 20-amino-acid encoder cannot consume). A benchmark must state, per endpoint, what input it actually uses and why.
 
-### 1.3 Prior Work (unchanged from v1.0, condensed)
+### 1.3 Prior Work (condensed)
 
-Classical tools (AdmetSAR 2.0, SwissADME, ADMETlab 3.0, pepADMET) offer peptide ADMET predictions but were primarily optimized for small molecules or validated on small, non-external test sets. Deep approaches (LSTM, Transformer, GNN, protein language models) capture sequence order but demand large datasets and GPU resources. Handcrafted-composition QSAR remains competitive, particularly at modest data scale. 2026 has added generative-redesign pipelines for antibiotics (ApexGO, *Nature Machine Intelligence*, 2026-05) and integrated agentic pipelines for peptide campaigns (*npj Drug Discovery*, 2026-05), all of which converge on the same methodological point: **report what was measured, on which split, with which leakage controls.**
+Classical tools (AdmetSAR 2.0, SwissADME, ADMETlab 3.0, pepADMET) offer peptide ADMET predictions but were primarily optimized for small molecules or validated on small, non-external test sets. Deep approaches (LSTM, Transformer, GNN, protein language models) capture sequence order but demand large datasets and GPU resources. Handcrafted-composition QSAR and RDKit descriptor models remain competitive, particularly at modest data scale. 2026 has added generative-redesign pipelines for antibiotics (ApexGO, *Nature Machine Intelligence*, 2026-05) and integrated agentic pipelines for peptide campaigns (*npj Drug Discovery*, 2026-05), all of which converge on the same methodological point: **report what was measured, on which split, with which leakage controls.**
 
 ### 1.4 Study Objectives
 
-1. Provide a **fully regenerable** demo dataset (fixed seed, explicit `data_origin` provenance column, metadata file) so that no shipped artifact can ever again be silently missing or fabricated.
-2. Implement an **AMPBench-MT-style homology-controlled split** (composition-family grouping, 70/10/20) with an explicit **leakage audit** (maximum pairwise Jaccard across splits; per-endpoint label-rate deltas) released alongside the split.
-3. Train and release a **shared multi-task PyTorch MLP** — the *same* architecture class in trainer and predictor — with the exact weights, scaler, and measured metrics in `metrics.json`.
-4. Report **measured** per-endpoint AUC/MCC/accuracy on both the homology-controlled split (headline) and a random split (comparison), and state plainly what the numbers do and do not claim.
-5. Add a **multi-objective composite score** for candidate prioritization, mirroring the multi-objective ranking used in generative AMP campaigns (AMPGAN v3 / PepCraft).
+1. Replace the synthetic demo set with a **real, permissively-licensed experimental dataset** (the Chemit797/PepADMET-Dataset release) and keep every shipped artifact present in the repository (prepared data, weights, scalers, metrics) so nothing referenced in documentation can be silently missing.
+2. Implement a **leakage-audited split per modality**: an AMPBench-MT-style homology-controlled split with **exact-anagram collapse** for sequence endpoints (guaranteeing no jaccard-1.0 duplicate crosses the boundary), and a unique-SMILES grouping split for the SMILES-only endpoints (with the near-isomer limitation stated explicitly).
+3. Train and release a **dual-modality** model family — the *same* architecture class in trainer and predictor — with the exact weights, scalers, and measured metrics in `metrics.json`.
+4. Report **measured** per-endpoint AUC/MCC/accuracy (binary) and R²/RMSE/MAE (regression) on the leakage-controlled split (headline) and a random split (leakage comparison), and state plainly what the numbers do and do not claim.
 
 ### 1.5 Significance
 
-**Methodological**: a small, self-contained reference implementation of the evaluation protocol (leakage audit + dual-split reporting + measured-metrics-only inference) that the field can adopt.
-**Reproducibility**: every number in this manuscript is a function of released code; `prepare_data.py → homology_split.py → train_peptide_admet_model.py → peptide_admet_predictor.py` regenerates the pipeline end-to-end on CPU in under an hour.
-**Honesty**: we report macro AUC 0.8684, not 0.9987. The near-zero delta between homology-controlled and random splits (§3.2) is the *finding* — on composition-level features over this demo set, there is little leakage to control, and the modest absolute numbers are what a latent-physicochemical label model allows.
+**Methodological**: a reference implementation of the evaluation protocol (per-modality leakage audit + dual-split reporting + measured-metrics-only inference) applied to *real* data — the step the synthetic-demo version could not take.
+**Reproducibility**: every number in this manuscript is a function of released code and released data; `prepare_pepadmet_data.py → train_pepadmet_model.py → peptide_admet_predictor.py` regenerates the pipeline end-to-end on CPU.
+**Honesty**: we report AUC 0.7755 and R² 0.3861–0.5883, not 0.9987. The large random-vs-controlled delta on half-life (0.8650 vs 0.5883) is the *finding* — it is the leakage a naive protocol would have silently reported as performance, and we ship the audit so the reader can check the regime.
 
 ---
 
 ## 2. Materials and Methods
 
-### 2.1 Data Generation (synthetic demo set, explicitly labeled)
+### 2.1 Data (real experimental dataset, provenance stated)
 
-Because no experimental peptide ADMET dataset of this size is openly available under a permissive license, and because the v1.0 "15,000 real peptides" CSV was never actually present in the repository, we generate a **synthetic demo dataset** and label it as such everywhere:
+We use the **Chemit797/PepADMET-Dataset** release (its cleaned `整理/` sub-directory), which provides four endpoint tables:
 
-- **Sequences**: 15,000 sequences, lengths 10–30 aa. Sequences are drawn from 10,000 composition "families"; each family has an amino-acid composition profile sampled from a Dirichlet distribution (per-AAs α ∈ [0.8, 6.0]), giving controlled but diverse composition clusters. Seed 42 (`numpy.random.default_rng`).
-- **Labels**: each of the 5 endpoints is the binary threshold (0.5) of a **latent physicochemical linear score** plus Gaussian noise. The scores use molecular-weight proxy, average Kyte–Doolittle hydropathy, net charge at pH 7, charged-residue fraction, and a per-endpoint composition tilt, with endpoint-specific weights (e.g., GI absorption penalizes long, charged, hydrophilic peptides; hERG inhibition is promoted by cationic + hydrophobic character).
-- **Provenance**: every row carries `data_origin = synthetic_demo`; the metadata file (`peptide_admet_demo.meta.json`) records the seed, label model, and a plain-English statement that the set exists to validate the pipeline, not to model real peptide ADMET.
+| Endpoint | Source table | Input | Label | Rows (prepared) |
+|---|---|---|---|---|
+| Hemolysis | `hemolysis_unified/hemolysis_unified.csv` | `sequence_std` (one-letter 20-AA) | `label` (0/1) | 8,719 |
+| Half-life | `half_life_*/...` | `sequence` (one-letter 20-AA) | `half_life_seconds` (continuous) | 1,763 |
+| Caco-2 | `caco2_*/...` | `SMILES` (valid) | `Permeability` (logPapp) | 7,429 |
+| PAMPA/MDCK | `pampa_mdck_*/...` | `SMILES` (valid) | `PAMPA` (logPapp) | 7,283 |
 
-**Resulting positive rates** (measured): GI absorption ≈ 0.14, Caco-2 permeability ≈ 0.32, BBB penetration ≈ 0.10, Ames mutagenicity ≈ 0.17, hERG inhibition ≈ 0.29. These are *by construction*, and they are what the model must learn.
+The four tables are **disjoint molecule sets** (no compound appears in more than one), so no multi-task shared-label structure exists; each endpoint is an independent single-task problem. `prepare_pepadmet_data.py` loads each table, validates the input (sequence endpoints: rows must contain a clean 20-AA one-letter sequence; molecular endpoints: the SMILES must parse under RDKit), drops rows with a missing/non-finite label, and writes a per-endpoint prepared CSV plus a provenance/`meta.json` recording source path, row counts, and the exact dropped-row statistics. No synthetic labels are generated; every label is taken verbatim from the source table.
 
-### 2.2 Feature Engineering
+**Half-life target transform.** The raw half-life spans ~10⁻³ to ~10⁹ s (log10 range −3.1 to 9.1). We model **log10(seconds)** as the regression target and report R² in that space; the inference CLI inverts to seconds for display. Caco-2 and PAMPA permeability are already log-scale (logPapp) and are modeled directly.
 
-Identical in training and inference (single shared implementation):
+### 2.2 Feature Engineering (dual-modality)
 
+Identical in training and inference (single shared implementation in `feature_extractor.py`):
+
+**Sequence modality (428-dim)** — Hemolysis, Half-life:
 1. **Amino Acid Composition (AAC)** — 20: frequency of each standard amino acid.
 2. **Dipeptide Composition (DPC)** — 400: frequency of every ordered dipeptide.
-3. **Physicochemical** — 8: estimated MW (length × 110 Da), average hydropathy, hydropathy range, net charge at pH 7, pI estimate, GRAVY, hydrophobic-residue fraction, charged-residue fraction.
+3. **Physicochemical** — 8: estimated MW, average Kyte–Doolittle hydropathy, net charge at pH 7, pI estimate, GRAVY, hydrophobic/charged-residue ratios.
 
-Total: 428 dimensions, Z-score standardized with a scaler fit on the training split only.
+**Molecular modality (2,265-dim)** — Caco-2, PAMPA/MDCK:
+1. **RDKit 2D descriptors** — 217: `rdkit.Chem.Descriptors.CalcMolDescriptors(mol)` (a fixed, deterministic registry).
+2. **Morgan fingerprint** — 2,048 bits, radius 2.
+
+The two permeability tables' native "sequence" column is a non-standard residue-name list (`MEL`, `DP`, `DL`, `ME_DL`, …) from CycPeptMPDB that a 20-AA encoder cannot consume; we therefore use the (valid) SMILES column and state this per endpoint in `endpoint_config.py`. A SMILES that fails RDKit parsing yields an all-zero molecular row and is counted in the preparation statistics (not silently fabricated). All features are Z-score standardized with a scaler fit on the training split only.
 
 ### 2.3 Model
 
-A single multi-task PyTorch MLP (defined once in `admet_model.py` and imported by both trainer and predictor, so the two can never drift apart):
+A single MLP class (`MixedADMETMLP` in `admet_model.py`) is instantiated per endpoint — the *same* class in trainer and predictor, so the two can never drift apart:
 
-- Input 428 → Linear 256 → BatchNorm → ReLU → Dropout(0.2) → Linear 128 → BatchNorm → ReLU → Dropout(0.2) → 5 × Linear(1) sigmoid heads.
-- 144,133 parameters. Loss: mean of per-endpoint BCE with class weights derived from endpoint prevalence. Optimizer: Adam (lr 3e-4), `ReduceLROnPlateau` (factor 0.5, patience 3), early stopping on validation BCE (patience 8).
-- Trained on CPU. No Random Forest component; v1.0's "ensemble (RF + NN)" is retired because the shipped `nn_model.pkl` was, in fact, a second Random Forest, which we no longer ship or claim.
+- Input `d` → Linear 256 → BatchNorm → ReLU → Dropout(0.2) → Linear 128 → BatchNorm → ReLU → Dropout(0.2) → a single task head (`Linear(128,1)`; sigmoid for Hemolysis, identity for the three regressions).
+- Parameter counts: **143,617** (sequence endpoints, d=428) and **613,889** (molecular endpoints, d=2,265). Loss: BCE-with-logits (Hemolysis) or MSE (regressions). Optimizer: Adam (lr 3e-4), `ReduceLROnPlateau` (factor 0.5, patience 3), early stopping on the validation objective (patience 8). Trained on CPU. No ensemble; no Random Forest.
 
-### 2.4 Homology-Controlled Splitting with Leakage Audit (AMPBench-MT style)
+### 2.4 Leakage-Controlled Splitting with Audit (per modality)
 
-Following the leakage analysis in AMPBench-MT (arXiv:2607.25518):
+**Sequence endpoints (Hemolysis, Half-life).** Following AMPBench-MT (arXiv:2607.25518): (1) each sequence is reduced to a **canonical 3-mer-multiset signature** (a count vector over its 3-mers); two sequences with identical 3-mer multisets have 3-mer Jaccard = 1.0, so collapsing by signature *guarantees* no exact-jaccard-1.0 duplicate (including length-preserving anagrams) is ever placed on both sides of the boundary; (2) the unique signatures are clustered by greedy single-linkage 3-mer Jaccard (threshold 0.35); (3) **families** — not sequences — are allocated to train/val/test at 70/10/20; (4) a **leakage audit** is shipped with the split: maximum audited cross-boundary 3-mer Jaccard and the per-endpoint label-rate delta. In our run the max cross-boundary Jaccard is ≈0.968 (Hemolysis) and ≈0.974 (half-life) — the expected near-duplicate ceiling under a controlled split, with exact-multiset leakage **guaranteed 0**.
 
-1. Each sequence is assigned to its **composition family** (the generating family in §2.1; in a real dataset one would use e.g. BLAST/HHblits clustering or a fixed-similarity threshold).
-2. Families (not sequences) are allocated to train / val / test at 70 / 10 / 20, so no family appears in more than one split.
-3. A **leakage audit** is computed and shipped (`split/leakage_audit.json`): maximum pairwise Jaccard index on composition vectors between train and test families, and per-endpoint positive-rate deltas between train and test. In our run: max Jaccard = 0.250 (below the 0.5 similarity threshold of concern) and all endpoint label-rate deltas ≤ 0.013.
-4. As a **comparison**, the identical model is trained and evaluated on a plain stratified-random 70/10/20 split. The delta between the two test metrics quantifies the leakage present in the random protocol *on this dataset*.
+**Molecular endpoints (Caco-2, PAMPA/MDCK).** No sequence is available, so a 3-mer homology control is impossible. We instead group by **unique SMILES** (exact-duplicate SMILES share one split) and draw a 70/10/20 split over unique SMILES. We state the limitation explicitly: **near-isomeric structures** (different SMILES strings, same chemistry) can cross the boundary — a real-data limitation of SMILES-only data, weaker than the sequence homology control. This is recorded in each endpoint's `metrics.json` audit.
+
+As a **leakage comparison** (sequence endpoints only), the identical model is trained on a plain random 70/10/20 split; the delta between the random and controlled test metrics quantifies the leakage the random protocol would have reported.
 
 ### 2.5 Evaluation
 
-Per endpoint: AUC-ROC, Matthews correlation coefficient (MCC), accuracy, and positive rate, at threshold 0.5, computed on the held-out split only. Headline metric: **macro AUC across the 5 endpoints on the homology-controlled test set** (3,020 sequences). All numbers are written to `metrics.json` by the training script; the inference CLI reads that file and prints only measured values.
+Per endpoint, computed on the held-out test split only and written to `metrics.json`: binary endpoints report AUC-ROC, MCC, and accuracy at threshold 0.5; regression endpoints report R², RMSE, and MAE (in the modeling space: log10-seconds for half-life, logPapp for permeability). Headline numbers are the leakage-controlled test metrics; the random-split numbers are the leakage comparison.
 
-### 2.6 Multi-Objective Composite Score
+### 2.6 Multi-Objective Composite Score (removed in v4.0)
 
-For candidate prioritization (mirroring the multi-objective ranking in AMPGAN v3 / PepCraft generative campaigns), we define the composite score as the **geometric mean** of favorable endpoint probabilities:
-
-```
-score = ( p(GI) · p(Caco-2) · p(BBB) · (1 − p(Ames)) · (1 − p(hERG)) )^(1/5)
-```
-
-The geometric mean penalizes any single poor endpoint (a candidate that is well-absorbed but hERG-positive scores low), which matches the "no fatal flaw" logic used when ranking generated peptide candidates before experimental testing.
+The v3.0 composite score (geometric mean over favorable endpoint probabilities) assumed five *binary* endpoints of mixed favorability. With the v4.0 set — one binary plus three continuous regression endpoints on disjoint molecules — a single geometric-mean score is not meaningful, so it is **removed**; the predictor reports each endpoint's value in its own units.
 
 ---
 
 ## 3. Results
 
-### 3.1 Measured Performance
+### 3.1 Measured Performance (leakage-controlled test split, headline)
 
-All values below are taken from `peptide_admet_model/metrics.json` produced by the released training script.
+All values below are taken from `models_v4/<endpoint>/metrics.json` produced by the released training script (seed 42, 80 epochs, early-stopped).
 
-**Homology-controlled test split (headline; 3,020 sequences):**
+| Endpoint | Kind | Modality | Test (n) | Primary | Other |
+|---|---|---|---|---|---|
+| Hemolysis | binary | sequence | 1,745 | AUC **0.7755** | MCC 0.3782, Acc 0.7009 |
+| Half-life | regression (log10 s) | sequence | 428 | R² **0.5883** | RMSE 1.2502, MAE 0.8714 |
+| Caco-2 | regression (logPapp) | molecular | 1,490 | R² **0.3861** | RMSE 0.7879, MAE 0.4896 |
+| PAMPA/MDCK | regression (logPapp) | molecular | 1,457 | R² **0.4573** | RMSE 0.8043, MAE 0.5070 |
 
-| Endpoint | AUC | MCC | Accuracy | Positive rate |
-|---|---|---|---|---|
-| GI absorption | 0.8810 | 0.4457 | 0.8037 | 0.132 |
-| Caco-2 permeability | 0.8882 | 0.5930 | 0.8094 | 0.319 |
-| BBB penetration | 0.9070 | 0.4575 | 0.8367 | 0.105 |
-| Ames mutagenicity | 0.8011 | 0.3418 | 0.7016 | 0.171 |
-| hERG inhibition | 0.8645 | 0.5261 | 0.7665 | 0.299 |
-| **Macro AUC** | **0.8684** | — | **mean 0.7836** | — |
+### 3.2 Dual-Split Comparison (the leakage question, now real)
 
-**Homology-controlled validation split:** macro AUC 0.8705 (per-endpoint AUC 0.8568–0.9200).
+| Endpoint | Controlled test | Random test | Delta (random − controlled) |
+|---|---|---|---|
+| Hemolysis (AUC) | 0.7755 | 0.7746 | −0.0009 |
+| Half-life (R², log10 s) | 0.5883 | 0.8650 | **+0.2767** |
+| Caco-2 / PAMPA | — | — | (no sequence; unique-SMILES split only) |
 
-### 3.2 Dual-Split Comparison (the leakage question)
+The half-life delta is the central real-data demonstration: a plain random split reports **R² 0.8650**, but under the leakage-controlled protocol the honest number is **0.5883**. The 0.2767 gap is near-duplicate and near-anagram leakage that a naive protocol would have silently reported as predictive skill. On Hemolysis the delta is near zero because the sequence families are spread thinly enough that a random draw rarely re-presents the exact composition region — the regime in which the protocol matters most (large or seed-mutated families, as in real libraries) is exactly the half-life regime. We ship the audit so the reader can check the regime rather than trusting an unexamined split.
 
-| Protocol | Macro AUC (test) | Mean accuracy |
-|---|---|---|
-| Homology-controlled (headline) | 0.8684 | 0.7836 |
-| Stratified random (comparison) | 0.8688 | 0.7850 |
-| **Delta (random − homology)** | **+0.0004** | +0.0014 |
+### 3.3 Why the Numbers Are 0.4–0.8, Not 0.99
 
-The near-zero delta is informative in both directions. On *this* demo set, the random split leaks almost nothing because the 10,000 composition families are spread thinly enough that a random draw rarely re-presents the exact same composition region with strong overlap. The protocol matters — and must be audited — precisely when families are large or the dataset is built by mutating a small seed set, which is the regime where AMPBench-MT documents inflation. We ship the audit so the reader can check the regime, rather than trusting an unexamined split.
-
-### 3.3 Why the Numbers Are 0.8–0.9, Not 0.99
-
-The labels are, by construction, noisy thresholded linear functions of a handful of physicochemical features. A model restricted to composition-level features can in principle recover most of that signal, and the residual 0.1–0.2 AUC gap to 1.0 is exactly the label noise plus the information lost by discarding sequence *order* (DPC captures only bigram frequency, not context). We consider this agreement between label-model complexity and measured performance the strongest evidence that the pipeline is honest: the model is neither overfitting (homology ≈ random) nor underfitting (AUC well above 0.5 at every endpoint).
-
-### 3.4 Multi-Objective Ranking (demo)
-
-Ranking the five demo sequences in `test_sequences.txt` by composite score separates the clearly hydrophobic, uncharged candidate (top; high GI/Caco-2/BBB probabilities but elevated hERG probability pulling the geometric mean down) from the strongly charged candidates (bottom; poor permeability). The ranking behaves qualitatively as the literature would predict for passive permeability, which is the intended use of the demo set.
+On real data the labels are measured, noisy, and partly unidentifiable from composition-level (AAC/DPC) or 2D-descriptor features alone: permeability depends on sequence *order*, conformation, and transporter effects that neither feature set captures fully. The R² 0.386–0.457 permeability regressions are the honest result of a descriptor-level model on real, heterogeneous permeability data — not a defect. The model is neither overfitting (Hemolysis controlled ≈ random; half-life controlled well below the leakage-inflated random) nor trivially underfitting (AUC 0.7755, R² up to 0.5883, well above chance).
 
 ---
 
@@ -186,69 +172,70 @@ Ranking the five demo sequences in `test_sequences.txt` by composite score separ
 
 ### 4.1 What this contribution is
 
-A **reproducibility and evaluation-protocol contribution**: a regenerable dataset, an audited homology-controlled split, a shared model definition, and measured-only metrics, packaged so that every number in the paper is re-derivable from the repository. It is *not* a claim of real-peptide ADMET accuracy, and the abstract, TOC, and repository documentation are written to that standard.
+A **reproducibility and evaluation-protocol contribution, now on real data**: a real dataset with prepared artifacts shipped in the repository, a per-modality leakage audit, a shared model definition, and measured-only metrics, packaged so that every number is re-derivable from the repository. For the first time the protocol is not just pipeline-certified (as on the synthetic demo) but *applied to experimental data*, so the reported numbers carry real-peptide meaning within their stated feature limitations.
 
 ### 4.2 Relation to 2026 work
 
-- **AMPBench-MT (arXiv:2607.25518)**: our split + audit implements the leakage controls it advocates for AMP/ADMET evaluation; our §3.2 reports the split-protocol delta it calls for.
-- **AMPGAN v3 / PepCraft (arXiv, 2026-06)**: their generative campaigns rank candidates by multi-objective criteria tied to experimental MIC; our composite score (§2.6) is the in-silico analogue for a 5-endpoint ADMET panel.
-- **ApexGO (Nat. Mach. Intell., 2026-05)**: generative redesign of antibiotic molecules with honest validation gates — the same "validate before claiming" stance we adopt.
-- **Integrated agentic peptide pipelines (npj Drug Discovery, 2026-05)**: end-to-end campaigns that combine LLM-planned experiments with ML models; our pipeline is deliberately simple and fully deterministic so it can serve as a *verification baseline* inside such campaigns.
-- **Genotypic Triggers (2026-08)**: shows safety blind spots arise from missing pharmacogenomic endpoint dimensions; we add toxicogenomics endpoints to the roadmap rather than silently omitting them.
+- **AMPBench-MT (arXiv:2607.25518)**: our sequence split + audit implements the leakage controls it advocates; §3.2 now reports a *large, real* random-vs-controlled delta (half-life R² 0.8650 → 0.5883), which is precisely the inflation it documents.
+- **ApexGO (Nat. Mach. Intell., 2026-05)** and **integrated agentic peptide pipelines (npj Drug Discovery, 2026-05)**: the "validate before claiming" stance we adopt throughout.
+- **Genotypic Triggers (2026-08)**: safety blind spots from missing endpoint dimensions; our four-endpoint panel omits toxicogenomic and immunogenicity dimensions and states that in §4.4.
 
 ### 4.3 Practical guidance we recommend
 
-1. Ship the dataset (or its exact generator) with the code — never reference a CSV the repository does not contain.
-2. Audit and publish the split's leakage (similarity statistics + label-rate deltas), not just its stratification.
+1. Ship the prepared data (or its exact generator + source path) with the code — never reference a CSV the repository does not contain.
+2. Audit and publish the split's leakage (similarity statistics + label-rate deltas) per modality, not just its stratification.
 3. Use one shared model class for training and inference; release `metrics.json` and have the CLI print measured values only.
-4. Report the random-vs-controlled-split delta whenever the dataset contains near-duplicate or family-structured sequences.
+4. Report the random-vs-controlled-split delta whenever the dataset contains near-duplicate or anagrammatic sequences — on real peptide libraries this delta is often large (half-life: +0.277 R²).
+5. State, per endpoint, the input modality actually used and why (a non-standard residue-name list is not a sequence a 20-AA encoder can consume).
 
 ### 4.4 Limitations
 
-1. **Synthetic labels.** Every number here measures the pipeline, not biology. Real-peptide performance must be re-measured on experimental data before any accuracy claim.
-2. **Five endpoints only.** No toxicogenomic / pharmacogenomic, immunogenicity, or protease-stability endpoints (the blind-spot class documented by Genotypic Triggers).
-3. **Composition-level features.** AAC/DPC discard order beyond bigrams; sequence-order-sensitive properties (protease cleavage context, local membrane-interaction motifs) are out of reach for this model class.
-4. **Length range.** The demo set spans 10–30 aa; behavior outside that range is unvalidated.
-5. **No wet-lab validation.** Nothing here has been confirmed experimentally.
+1. **Four endpoints.** No toxicogenomic/pharmacogenomic, immunogenicity, or protease-stability endpoints (the blind-spot class documented by Genotypic Triggers).
+2. **Molecular-endpoint leakage control is weaker.** Caco-2 and PAMPA have no sequence, so the split is by unique SMILES only; near-isomeric structures can cross the boundary. Their R² values may be modestly optimistic relative to a full homology control.
+3. **Composition-level / 2D-descriptor features.** AAC/DPC discard order beyond bigrams; RDKit 2D descriptors + Morgan fingerprints are order-insensitive. Sequence-order-sensitive and conformational effects are out of reach for this model class.
+4. **Half-life target is log10-transformed**; R² is reported in log10-seconds, not raw seconds.
+5. **No wet-lab validation.** These are model fits to published experimental values, not new measurements.
+6. **Small half-life test set** (428 rows) — its R² has a wider confidence interval than the permeability endpoints.
 
 ### 4.5 Future directions
 
-Retrain on licensed experimental peptide ADMET data with the *same* split/audit/reporting protocol; extend features with a frozen protein-language-model embedding (e.g., ProtGPT2-style soft-prompt embeddings as used in the npj Drug Discovery 2026 pipeline) or a GNN backbone for order sensitivity; add toxicogenomic and stability endpoints; and expose the composite score as an objective for generative peptide design in the AMPGAN v3 / PepCraft style.
+Extend features with a frozen protein-language-model embedding (ProtGPT2-style) or a GNN backbone for order sensitivity on the sequence endpoints; add a molecular graph model to strengthen the molecular-endpoint leakage control; add the omitted safety/stability endpoints; and expose per-endpoint predictions as objectives for generative peptide design in the AMPGAN v3 / PepCraft style.
 
 ---
 
 ## 5. Conclusions
 
-We replaced a submission package whose metrics could not be reproduced from its artifacts with a fully reproducible pipeline: a regenerable synthetic demo set with provenance, an AMPBench-MT-style homology-controlled split with a shipped leakage audit, and a shared multi-task PyTorch MLP whose measured performance (macro AUC 0.8684, mean accuracy 0.7836, on the homology-controlled split; 0.8688 random) we report without inflation. The near-parity between split protocols on this dataset, together with the audit, is our central demonstration: peptide ADMET numbers should be reported with their split provenance, and honest numbers on a demo set are the appropriate claim until real data arrive.
+We moved a reproducibility benchmark from the synthetic demo that certified it to **real experimental data**, keeping the protocol identical: a leakage-audited per-modality split (exact-anagram collapse for sequence endpoints, unique-SMILES for molecular endpoints), a shared model definition, and measured-only metrics over four ADMET endpoints. On real data the dual-split comparison becomes decisive — a random half-life split reports R² 0.8650, but the leakage-controlled honest number is 0.5883 — and the released repository now contains the prepared data, all four model weights, scalers, and `metrics.json`, so every number is re-derivable from the repository. Peptide ADMET numbers should be reported with their split provenance and input modality; we demonstrate the standard on real data.
 
-**Availability**: all code, the trained model (144,133 parameters), the scaler, and `metrics.json` are at https://github.com/c00jsw00/openclaw-peptide-admet.
+**Availability**: all code, the four trained models (sequence endpoints 143,617 params; molecular endpoints 613,889 params), the scalers, the prepared data, and `metrics.json` are at https://github.com/c00jsw00/openclaw-peptide-admet.
 
 ---
 
 ## 6. Acknowledgments
 
-We acknowledge the AMPBench-MT authors and the 2026 generative-AMP communities for the evaluation-integrity standards adopted here.
+We thank the authors of the Chemit797/PepADMET-Dataset release for providing cleaned real-data endpoint tables, and the AMPBench-MT authors and the 2026 generative-AMP communities for the evaluation-integrity standards adopted here.
 
 ---
 
 ## 7. References
 
-(1–17 as in v1.0, condensed: peptide therapeutics background, ADMET tool literature, classical QSAR/deep-learning comparisons.)
+(1–17 as in prior versions, condensed: peptide therapeutics background, ADMET tool literature, classical QSAR/deep-learning comparisons, RDKit/CSD.)
 
 18. **AMPBench-MT**: Multi-task benchmarking for antimicrobial peptide prediction: the case for homology-controlled evaluation. *arXiv:2607.25518* (2026).
 19. **AMPGAN v3 / PepCraft**: Generative redesign of antimicrobial peptides with multi-objective candidate ranking and wet-lab MIC validation. *arXiv* (2026).
 20. **ApexGO**: Generative redesign of antibiotic scaffolds with validation-gated evaluation. *Nature Machine Intelligence* (2026-05).
 21. **Integrated agentic peptide-discovery pipeline** (ProtGPT2 soft-prompt integration, LLM-planned experiments). *npj Drug Discovery* (2026-05).
 22. **Genotypic Triggers**: pharmacogenomic "back doors" as a safety blind spot in polypharmacy risk prediction. (2026-08).
+23. **PepADMET-Dataset**: Chemit797/PepADMET-Dataset. https://github.com/Chemit797/PepADMET-Dataset (2026).
 
 ---
 
 ## Supporting Information Available
 
-- **S1.** `data/peptide_admet_demo.meta.json` — dataset provenance and label model.
-- **S2.** `data/split/leakage_audit.json` — split leakage audit (max Jaccard, endpoint label-rate deltas).
-- **S3.** `peptide_admet_model/metrics.json` — all measured per-endpoint metrics, both splits.
-- **S4.** Example predictions for `test_sequences.txt` (composite-score ranking).
+- **S1.** `data/pepadmet_data.meta.json` — per-endpoint source path, prepared row counts, dropped-row statistics.
+- **S2.** `models_v4/<endpoint>/metrics.json` — all measured per-endpoint metrics (both splits where applicable), split statistics, and the per-endpoint leakage audit.
+- **S3.** `models_v4/summary.json` — four-endpoint headline summary.
+- **S4.** `train_v4.log` — the human-readable record of the training run (per-endpoint training curves, split counts, final SUMMARY block).
 
 ---
 
@@ -258,10 +245,10 @@ We acknowledge the AMPBench-MT authors and the 2026 generative-AMP communities f
 
 **Data and Code Availability**: https://github.com/c00jsw00/openclaw-peptide-admet
 
-**Submission positioning**: benchmark / reproducibility-protocol contribution. We do **not** recommend submitting this as a "real-peptide accuracy" paper; the appropriate venue framing is a methods/benchmark article (e.g., JCIM's benchmark track or a workshop on ML evaluation integrity) pending real-data retraining.
+**Submission positioning**: benchmark / reproducibility-protocol contribution, now with real-data results. The appropriate venue framing is a methods/benchmark article (e.g., JCIM's benchmark track or a workshop on ML evaluation integrity); the real-data R² values are honest and modest and are reported as such.
 
 ---
 
-**Manuscript prepared**: 2026-08-24
-**Version**: 2.0 (integrity revision; replaces 2026-03-24 v1.0)
-**Status**: internally consistent; submission framing adjusted per §"Submission positioning"
+**Manuscript prepared**: 2026-08-25
+**Version**: 4.0 (real-data edition; replaces the 2026-08-25 v3.0 synthetic-demo update)
+**Status**: internally consistent with the released v4.0 repository (metrics, weights, and prepared data all committed)

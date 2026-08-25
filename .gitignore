@@ -35,15 +35,23 @@ env/
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# PyTorch models (large files)
+# PyTorch models — ignored by default; the v4 endpoint weights are small
+# (~6 MB total across 4 models) and ARE committed so the models are usable
+# straight from the repo without retraining.
 *.pth
+!models_v4/
+!models_v4/**
+!models_v4/**/*.pt
+!models_v4/**/*.pth
 
 # Numpy data (large files)
 *.npy
 *.npz
 
-# Pandas data (large files)
+# Pandas data (large files) — the prepared PepADMET endpoint CSVs ARE the
+# committed training data (deterministic prepared inputs, ~3.4 MB total).
 *.csv
+!data/pepadmet_*.csv
 *.feather
 *.parquet
 
@@ -54,11 +62,8 @@ model_checkpoints/
 # Training logs
 logs/
 tensorboard/
-
-# Local A/B baseline artifacts (30k-only model weights kept out of the repo;
-# the small metrics_30k_only.json baseline IS committed as comparison evidence)
-data/model_30k_only/
-data/peptaloid_sequences.txt
+# v4 run log committed as the human-readable record of the training run
+!train_v4.log
 
 # GitHub
 .github/

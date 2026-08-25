@@ -1,0 +1,77 @@
+{
+  "endpoint": "Hemolysis",
+  "kind": "binary",
+  "modality": "sequence",
+  "model": "MixedADMETMLP (single head, per-endpoint)",
+  "n_params": 143617,
+  "input_dim": 428,
+  "feature_layout": "428-dim: 20 AAC + 400 DPC + 8 physchem",
+  "target_transform": "identity",
+  "raw_units": "",
+  "data_source": "Chemit797/PepADMET-Dataset (real experimental data)",
+  "n_samples": 8719,
+  "binary_pos_weight": 3.421739101409912,
+  "training": {
+    "epochs_max": 80,
+    "early_stopping": "val loss, patience 10",
+    "seed": 42,
+    "optimizer": "Adam lr=1e-3 wd=1e-5",
+    "scheduler": "ReduceLROnPlateau factor 0.5 patience 4"
+  },
+  "splits": {
+    "primary": {
+      "audit": {
+        "method": "rows collapsed by canonical 3-mer-multiset signature (jaccard-1.0 anagrams merged to one family), then greedy single-linkage 3-mer Jaccard clustering (threshold), family-level split (AMPBench-MT-style homology control, arXiv:2607.25518)",
+        "threshold": 0.35,
+        "n_unique_signatures": 8701,
+        "n_families": 7886,
+        "max_train_test_kmer_jaccard_audited": 0.9677,
+        "exact_multiset_leakage": "guaranteed 0 (signature collapse)",
+        "counts": {
+          "train": 6102,
+          "val": 872,
+          "test": 1745
+        }
+      },
+      "test": {
+        "kind": "binary",
+        "modality": "sequence",
+        "n": 1745,
+        "auc": 0.7755,
+        "mcc": 0.3782,
+        "accuracy": 0.7009,
+        "pos_rate": 0.2338
+      },
+      "val": {
+        "kind": "binary",
+        "modality": "sequence",
+        "n": 872,
+        "auc": 0.7679,
+        "mcc": 0.3328,
+        "accuracy": 0.6766,
+        "pos_rate": 0.2408
+      }
+    },
+    "comparison": {
+      "audit": {
+        "method": "random 70/10/20 (comparison only — inflated by near-duplicate leakage)",
+        "counts": {
+          "train": 6103,
+          "val": 871,
+          "test": 1745
+        }
+      },
+      "test": {
+        "kind": "binary",
+        "modality": "sequence",
+        "n": 1745,
+        "auc": 0.7746,
+        "mcc": 0.3604,
+        "accuracy": 0.7192,
+        "pos_rate": 0.2155
+      }
+    }
+  },
+  "elapsed_s": 28.3,
+  "generated_at": "2026-08-25 21:55:48"
+}

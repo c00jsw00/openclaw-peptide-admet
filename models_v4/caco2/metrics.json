@@ -1,0 +1,73 @@
+{
+  "endpoint": "Caco2",
+  "kind": "regression",
+  "modality": "molecular",
+  "model": "MixedADMETMLP (single head, per-endpoint)",
+  "n_params": 613889,
+  "input_dim": 2265,
+  "feature_layout": "2265-dim: 217 RDKit 2D descriptors + 2048-bit Morgan (radius 2)",
+  "target_transform": "identity",
+  "raw_units": "logPapp",
+  "data_source": "Chemit797/PepADMET-Dataset (real experimental data)",
+  "n_samples": 7429,
+  "binary_pos_weight": null,
+  "training": {
+    "epochs_max": 80,
+    "early_stopping": "val loss, patience 10",
+    "seed": 42,
+    "optimizer": "Adam lr=1e-3 wd=1e-5",
+    "scheduler": "ReduceLROnPlateau factor 0.5 patience 4"
+  },
+  "splits": {
+    "primary": {
+      "audit": {
+        "method": "random 70/10/20 on unique SMILES (no sequence available -> no homology control possible; exact-duplicate SMILES grouped into one split)",
+        "n_unique_smiles": 7376,
+        "n_rows": 7429,
+        "counts": {
+          "train": 5197,
+          "val": 742,
+          "test": 1490
+        },
+        "leakage_caveat": "near-isomeric structures (different SMILES, same chemistry) CAN cross the boundary — a real-data limitation of SMILES-only data, weaker than the 3-mer homology control used for sequence endpoints."
+      },
+      "test": {
+        "kind": "regression",
+        "modality": "molecular",
+        "n": 1490,
+        "r2": 0.3861,
+        "rmse": 0.7879,
+        "mae": 0.4896,
+        "target_units": "logPapp",
+        "y_range": [
+          -10.0,
+          -4.0
+        ],
+        "pred_range": [
+          -10.1929,
+          -3.3608
+        ]
+      },
+      "val": {
+        "kind": "regression",
+        "modality": "molecular",
+        "n": 742,
+        "r2": 0.3913,
+        "rmse": 0.8778,
+        "mae": 0.5194,
+        "target_units": "logPapp",
+        "y_range": [
+          -10.0,
+          -4.0
+        ],
+        "pred_range": [
+          -9.8117,
+          -3.7877
+        ]
+      }
+    },
+    "comparison": null
+  },
+  "elapsed_s": 595.6,
+  "generated_at": "2026-08-25 22:05:47"
+}
