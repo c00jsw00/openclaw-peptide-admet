@@ -81,6 +81,11 @@ tensorboard/
 _[a-z]*.py
 _[a-z]*.log
 
+# 176MB feature cache rebuilt by analysis/ scripts (RDKit 217 + Morgan r2
+# + MoLFormer 768, ~8 min to rebuild on CPU). NOT committed: it duplicates
+# data already in data/ (CSV + molformer npz) and would bloat the repo.
+_pampa_feat_cache.npz
+
 # GitHub
 .github/
 
