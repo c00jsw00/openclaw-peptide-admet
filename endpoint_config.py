@@ -97,6 +97,27 @@ def esmc_cache_path(name: str) -> str:
     return f'{ESMC_CACHE_DIR}/esmc_emb_{slug}.npz'
 
 
+# --------------------------------------------------------------------------- #
+# MoLFormer-XL molecular embeddings  [v4.2]
+# --------------------------------------------------------------------------- #
+# The two molecular-modality endpoints (Caco-2, PAMPA/MDCK) now ALSO receive a
+# frozen MoLFormer-XL (IBM, ~60M params, hidden 768) CLS-token embedding,
+# concatenated on to the 2265-dim RDKit vector (2D descriptors + Morgan) ->
+# 3033-dim model input.  This is the v4.2 "new weapon" for the two
+# permeability endpoints: a pretrained SMILES transformer representation added
+# to the hand-engineered 2D descriptors.  Embeddings are precomputed offline
+# (molformer_embed.py, plain CPU torch in the main .venv) and cached in
+# data/molformer/*.npz so training / inference never need transformers at
+# runtime.  (The MoLFormer weights are in the main .venv, not .venv-esmc.)
+MOLEFORMER_MODEL = 'ibm-research/MoLFormer-XL-both-10pct'
+MOLEFORMER_DIM = 768
+MOLEFORMER_CACHE_DIR = 'data/molformer'
+# per-endpoint cached embedding file (slug = name.lower().replace(' ', '_'))
+def molformer_cache_path(name: str) -> str:
+    slug = name.lower().replace(' ', '_')
+    return f'{MOLEFORMER_CACHE_DIR}/molformer_emb_{slug}.npz'
+
+
 @dataclass(frozen=True)
 class Endpoint:
     """One prediction target."""
@@ -120,6 +141,8 @@ class Endpoint:
     risk_direction: str = 'prob'   # 'prob' (P(positive)) | 'class' | 'value'
     # v4.1: append the frozen ESMC-600M embedding to the sequence features
     esmc: bool = False             # True -> input = 428-dim seq + 1152-dim ESMC
+    # v4.2: append the frozen MoLFormer-XL embedding to the molecular features
+    molformer: bool = False        # True -> input = 2265-dim mol + 768-dim MoLFormer
 
 
 # --------------------------------------------------------------------------- #
@@ -151,7 +174,8 @@ ENDPOINTS: List[Endpoint] = [
              target_transform='identity',
              raw_units='logPapp',
              description='Caco-2 apparent permeability (logPapp); molecular features',
-             in_composite=True, higher_is_worse=False, risk_direction='value'),
+             in_composite=True, higher_is_worse=False, risk_direction='value',
+             molformer=True),
 
     Endpoint('PAMPA_MDCK', KIND_REGRESSION, MODALITY_MOLECULAR, 1,
              source_file='整理/permeability_out/permeability_unified.csv',
@@ -160,7 +184,8 @@ ENDPOINTS: List[Endpoint] = [
              target_transform='identity',
              raw_units='logPapp',
              description='PAMPA apparent permeability (logPapp); molecular features',
-             in_composite=True, higher_is_worse=False, risk_direction='value'),
+             in_composite=True, higher_is_worse=False, risk_direction='value',
+             molformer=True),
 ]
 
 ENDPOINT_NAMES: List[str] = [e.name for e in ENDPOINTS]
@@ -174,20 +199,22 @@ REGRESSION_NAMES = [e.name for e in ENDPOINTS if e.kind == KIND_REGRESSION]
 SEQUENCE_NAMES = [e.name for e in ENDPOINTS if e.modality == MODALITY_SEQUENCE]
 MOLECULAR_NAMES = [e.name for e in ENDPOINTS if e.modality == MODALITY_MOLECULAR]
 ESMC_NAMES = [e.name for e in ENDPOINTS if e.esmc]
+MOLEFORMER_NAMES = [e.name for e in ENDPOINTS if e.molformer]
 
 # Composite-score inputs (the endpoints folded into the overall risk number)
 COMPOSITE_NAMES = [e.name for e in ENDPOINTS if e.in_composite]
 
-# Classical (non-ESMC) per-modality feature widths, for docs / checks.
+# Classical (non-embedding) per-modality feature widths, for docs / checks.
 SEQ_FEATURE_DIM = 428      # 20 AAC + 400 DPC + 8 phys-chem
 MOL_FEATURE_DIM = 2265     # 217 RDKit 2D descriptors + 2048-bit Morgan r=2
 
 
 def input_dim_for(name: str) -> int:
-    """Effective model input dim for an endpoint (ESMC included when set)."""
+    """Effective model input dim for an endpoint (embeddings included when set)."""
     e = ENDPOINT_BY_NAME[name]
-    base = SEQ_FEATURE_DIM if e.modality == MODALITY_SEQUENCE else MOL_FEATURE_DIM
-    return base + (ESMC_DIM if e.esmc else 0)
+    if e.modality == MODALITY_SEQUENCE:
+        return SEQ_FEATURE_DIM + (ESMC_DIM if e.esmc else 0)
+    return MOL_FEATURE_DIM + (MOLEFORMER_DIM if e.molformer else 0)
 
 
 def check_esmc_cache(root: str = '.'):
@@ -200,6 +227,18 @@ def check_esmc_cache(root: str = '.'):
             f'missing ESMC embedding cache for {missing}: '
             f'run `.venv-esmc/Scripts/python.exe esmc_embed.py` '
             f'(expected {esmc_cache_path(missing[0])})')
+
+
+def check_molformer_cache(root: str = '.'):
+    """Raise if any MoLFormer endpoint's precomputed embedding cache is missing."""
+    from pathlib import Path
+    missing = [n for n in MOLEFORMER_NAMES
+               if not (Path(root) / molformer_cache_path(n)).exists()]
+    if missing:
+        raise FileNotFoundError(
+            f'missing MoLFormer embedding cache for {missing}: '
+            f'run `.venv/Scripts/python.exe molformer_embed.py` '
+            f'(expected {molformer_cache_path(missing[0])})')
 
 
 def endpoint(name: str) -> Endpoint:

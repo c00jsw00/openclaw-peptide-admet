@@ -3,10 +3,23 @@
   "kind": "regression",
   "modality": "molecular",
   "model": "MixedADMETMLP (single head, per-endpoint)",
-  "n_params": 613889,
-  "input_dim": 2265,
-  "feature_layout": "2265-dim: 217 RDKit 2D descriptors + 2048-bit Morgan (radius 2)",
+  "n_params": 810497,
+  "input_dim": 3033,
+  "trunk_hidden": [
+    256,
+    128
+  ],
+  "regression_loss": "huber",
+  "feature_layout": "2265-dim classical (217 RDKit 2D descriptors + 2048-bit Morgan radius 2) + 768-dim frozen MoLFormer-XL CLS embedding = 3033",
   "esmc": null,
+  "molformer": {
+    "model": "ibm-research/MoLFormer-XL-both-10pct",
+    "embedding_dim": 768,
+    "aggregation": "CLS token",
+    "frozen": true,
+    "cache": "data/molformer/molformer_emb_pampa_mdck.npz"
+  },
+  "target_aggregation": null,
   "target_transform": "identity",
   "raw_units": "logPapp",
   "data_source": "Chemit797/PepADMET-Dataset (real experimental data)",
@@ -36,39 +49,39 @@
         "kind": "regression",
         "modality": "molecular",
         "n": 1457,
-        "r2": 0.4573,
-        "rmse": 0.8043,
-        "mae": 0.507,
+        "r2": 0.4642,
+        "rmse": 0.7991,
+        "mae": 0.45,
         "target_units": "logPapp",
         "y_range": [
           -10.0,
           -4.0
         ],
         "pred_range": [
-          -12.18,
-          -3.3476
+          -10.0869,
+          -3.8906
         ]
       },
       "val": {
         "kind": "regression",
         "modality": "molecular",
         "n": 724,
-        "r2": 0.3763,
-        "rmse": 0.8473,
-        "mae": 0.4941,
+        "r2": 0.3636,
+        "rmse": 0.8558,
+        "mae": 0.4542,
         "target_units": "logPapp",
         "y_range": [
           -10.0,
           -4.19
         ],
         "pred_range": [
-          -10.1849,
-          -4.1839
+          -10.9127,
+          -4.1007
         ]
       }
     },
     "comparison": null
   },
-  "elapsed_s": 133.6,
-  "generated_at": "2026-08-26 05:52:48"
+  "elapsed_s": 130.1,
+  "generated_at": "2026-08-26 17:52:11"
 }

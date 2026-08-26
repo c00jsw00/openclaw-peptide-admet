@@ -3,10 +3,23 @@
   "kind": "regression",
   "modality": "molecular",
   "model": "MixedADMETMLP (single head, per-endpoint)",
-  "n_params": 613889,
-  "input_dim": 2265,
-  "feature_layout": "2265-dim: 217 RDKit 2D descriptors + 2048-bit Morgan (radius 2)",
+  "n_params": 810497,
+  "input_dim": 3033,
+  "trunk_hidden": [
+    256,
+    128
+  ],
+  "regression_loss": "huber",
+  "feature_layout": "2265-dim classical (217 RDKit 2D descriptors + 2048-bit Morgan radius 2) + 768-dim frozen MoLFormer-XL CLS embedding = 3033",
   "esmc": null,
+  "molformer": {
+    "model": "ibm-research/MoLFormer-XL-both-10pct",
+    "embedding_dim": 768,
+    "aggregation": "CLS token",
+    "frozen": true,
+    "cache": "data/molformer/molformer_emb_caco2.npz"
+  },
+  "target_aggregation": null,
   "target_transform": "identity",
   "raw_units": "logPapp",
   "data_source": "Chemit797/PepADMET-Dataset (real experimental data)",
@@ -36,39 +49,39 @@
         "kind": "regression",
         "modality": "molecular",
         "n": 1490,
-        "r2": 0.3861,
-        "rmse": 0.7879,
-        "mae": 0.4896,
+        "r2": 0.3909,
+        "rmse": 0.7848,
+        "mae": 0.4708,
         "target_units": "logPapp",
         "y_range": [
           -10.0,
           -4.0
         ],
         "pred_range": [
-          -10.1929,
-          -3.3608
+          -10.0563,
+          -3.8387
         ]
       },
       "val": {
         "kind": "regression",
         "modality": "molecular",
         "n": 742,
-        "r2": 0.3913,
-        "rmse": 0.8778,
-        "mae": 0.5194,
+        "r2": 0.3696,
+        "rmse": 0.8933,
+        "mae": 0.5018,
         "target_units": "logPapp",
         "y_range": [
           -10.0,
           -4.0
         ],
         "pred_range": [
-          -9.8117,
-          -3.7877
+          -9.3483,
+          -4.1373
         ]
       }
     },
     "comparison": null
   },
-  "elapsed_s": 142.0,
-  "generated_at": "2026-08-26 05:50:35"
+  "elapsed_s": 148.5,
+  "generated_at": "2026-08-26 17:50:01"
 }

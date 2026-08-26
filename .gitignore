@@ -51,6 +51,10 @@ env/
 *.npz
 !data/esmc/
 !data/esmc/**/*.npz
+# v4.2 frozen MoLFormer-XL embedding caches ARE committed so training/
+# prediction of the molecular endpoints works without transformers at runtime.
+!data/molformer/
+!data/molformer/**/*.npz
 
 # Pandas data (large files) — the prepared PepADMET endpoint CSVs ARE the
 # committed training data (deterministic prepared inputs, ~3.4 MB total).
@@ -70,6 +74,12 @@ tensorboard/
 !train_v4.log
 # v4.1 (ESMC) run log
 !train_v41.log
+# v4.2 (ESMC + MoLFormer) run log
+!train_v42.log
+
+# Scratch / local-only experiment files (R² probes, E2E verify, ad-hoc logs)
+_[a-z]*.py
+_[a-z]*.log
 
 # GitHub
 .github/

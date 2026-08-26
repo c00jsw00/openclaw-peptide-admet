@@ -65,7 +65,8 @@ from sklearn.preprocessing import StandardScaler
 
 from admet_model import MixedADMETMLP
 from endpoint_config import (ENDPOINTS, ENDPOINT_BY_NAME, ESMC_DIM,
-                             esmc_cache_path)
+                             esmc_cache_path, MOLEFORMER_DIM,
+                             molformer_cache_path)
 from feature_extractor import molecule_features, sequence_features
 
 SLUGS = {ep.name: ep.name.lower().replace(' ', '_') for ep in ENDPOINTS}
@@ -154,6 +155,86 @@ def get_esmc_embeddings(name, seqs):
 
 
 # --------------------------------------------------------------------------- #
+# MoLFormer-XL embedding supply (v4.2)
+# --------------------------------------------------------------------------- #
+# Frozen MoLFormer-XL CLS embeddings: SMILES already in the training cache
+# (data/molformer/molformer_emb_<slug>.npz) are served instantly from that
+# cache; a novel SMILES is embedded on demand by shelling out to the main
+# .venv (which owns the MoLFormer-XL checkpoint + transformers).  Both molecular
+# endpoints share one MoLFormer, so a single process-lifetime dict
+# (smiles -> 768-dim vector) serves them both.
+_MOLEFORMER_MEM = {}             # str SMILES -> np.float32[768]
+_MOLEFORMER_CACHE_LOADED = set() # endpoint slugs whose cache npz has been merged
+_MOLEFORMER_PY = None            # resolved main-venv interpreter path
+
+
+def _molformer_python() -> Path:
+    global _MOLEFORMER_PY
+    if _MOLEFORMER_PY is not None:
+        return _MOLEFORMER_PY
+    root = Path(__file__).resolve().parent
+    for cand in (root / '.venv/Scripts/python.exe',
+                 root / '.venv/bin/python'):
+        if cand.exists():
+            _MOLEFORMER_PY = cand
+            return cand
+    raise FileNotFoundError(
+        'MoLFormer env not found: expected .venv/ (Scripts/python.exe or '
+        'bin/python) next to this script. Novel (non-cached) SMILES need it; '
+        'cached SMILES do not.')
+
+
+def _molformer_merge_endpoint_cache(name):
+    """Load this endpoint's cached embeddings into the in-process dict."""
+    slug = SLUGS[name]
+    if slug in _MOLEFORMER_CACHE_LOADED:
+        return
+    _MOLEFORMER_CACHE_LOADED.add(slug)
+    path = Path(__file__).resolve().parent / molformer_cache_path(name)
+    if not path.exists():
+        return
+    z = np.load(path, allow_pickle=True)
+    keys = np.asarray(z['keys'], dtype=object)
+    emb = np.asarray(z['emb'], dtype=np.float32)
+    for k, e in zip(keys, emb):
+        _MOLEFORMER_MEM[str(k)] = e
+
+
+def _molformer_embed_missing(smiles):
+    """Embed novel SMILES via the main-.venv subprocess. -> (M, 768)."""
+    py = _molformer_python()
+    script = Path(__file__).resolve().parent / 'molformer_embed.py'
+    tmp = Path(tempfile.mkdtemp(prefix='molformer_predict_'))
+    sf, of = tmp / 'smiles.txt', tmp / 'emb.npz'
+    sf.write_text('\n'.join(smiles), encoding='utf-8')
+    env = os.environ.copy()
+    env.setdefault('HF_HUB_DISABLE_PROGRESS_BARS', '1')
+    r = subprocess.run([str(py), str(script),
+                        '--smiles-file', str(sf), '--out', str(of)],
+                       capture_output=True, text=True, env=env)
+    if r.returncode != 0:
+        raise RuntimeError(f'MoLFormer embedding subprocess failed:\n'
+                           f'--- stdout ---\n{r.stdout}\n--- stderr ---\n{r.stderr}')
+    z = np.load(of, allow_pickle=True)
+    return np.asarray(z['emb'], dtype=np.float32)
+
+
+def get_molformer_embeddings(name, smiles):
+    """Return (len(smiles), MOLEFORMER_DIM) float32, row-aligned to ``smiles``.
+
+    Cached SMILES resolve instantly; any novel ones are batched through the
+    MoLFormer subprocess exactly once and memoised.
+    """
+    _molformer_merge_endpoint_cache(name)
+    missing = [s for s in smiles if s not in _MOLEFORMER_MEM]
+    if missing:
+        extra = _molformer_embed_missing(missing)
+        for s, e in zip(missing, extra):
+            _MOLEFORMER_MEM[s] = e
+    return np.vstack([_MOLEFORMER_MEM[s] for s in smiles]).astype(np.float32)
+
+
+# --------------------------------------------------------------------------- #
 # Model loading
 # --------------------------------------------------------------------------- #
 class EndpointModel:
@@ -170,7 +251,9 @@ class EndpointModel:
                 f'model for {name} not found at {pt}; run train_pepadmet_model.py')
         blob = torch.load(pt, map_location='cpu', weights_only=False)
         self.model = MixedADMETMLP(input_dim=blob['input_dim'],
-                                   endpoints=blob['endpoints'])
+                                   endpoints=blob['endpoints'],
+                                   hidden=blob.get('hidden', (256, 128)),
+                                   dropout=blob.get('dropout', 0.25))
         self.model.load_state_dict(blob['state_dict'])
         self.model.eval()
         self.scaler = StandardScaler()
@@ -240,6 +323,11 @@ def build_features(ep_name, sequences, smiles):
         if not clean:
             return None, 0, valid
         X = molecule_features(clean).astype(np.float32)
+        if ep.molformer:
+            # v4.2: append the frozen MoLFormer-XL CLS embedding (row-aligned
+            # to `clean`) to the 2265-dim RDKit features -> 3033-dim input.
+            emb = get_molformer_embeddings(ep_name, clean)
+            X = np.concatenate([X, emb], axis=1)
         return X, len(X), valid
 
 
@@ -349,7 +437,7 @@ def resolve_endpoints(args):
 # Main
 # --------------------------------------------------------------------------- #
 def main():
-    ap = argparse.ArgumentParser(description='v4.1 4-endpoint real-data + ESMC predictor')
+    ap = argparse.ArgumentParser(description='v4.2 4-endpoint real-data + ESMC + MoLFormer predictor')
     ap.add_argument('--sequence', type=str, default=None,
                     help='one-letter amino-acid sequence (for sequence endpoints)')
     ap.add_argument('--smiles', type=str, default=None,

@@ -97,7 +97,9 @@ from sklearn.preprocessing import StandardScaler
 
 from admet_model import MixedADMETMLP, predict_mixed, save_mixed_model
 from endpoint_config import (ENDPOINTS, ENDPOINT_BY_NAME, KIND_BINARY,
-                             ESMC_MODEL, ESMC_DIM, esmc_cache_path)
+                             ESMC_MODEL, ESMC_DIM, esmc_cache_path,
+                             MOLEFORMER_MODEL, MOLEFORMER_DIM,
+                             molformer_cache_path)
 from feature_extractor import molecule_features, sequence_features
 from homology_split import greedy_kmer_clusters, split_by_family, leakage_audit, kmer_counts
 
@@ -112,14 +114,16 @@ PREPARED_CSV = {'Hemolysis': 'data/pepadmet_hemolysis.csv',
 # ESMC-600M embedding cache (v4.1)
 # --------------------------------------------------------------------------- #
 def load_esmc_embeddings(name: str, csv_seqs, n: int) -> np.ndarray:
-    """Load the frozen ESMC-600M embeddings cached for this endpoint.
+    """Load the frozen ESMC-600M embeddings for this endpoint's sequences.
 
     The cache (``data/esmc/esmc_emb_<slug>.npz``) stores (emb (N,1152)
-    float32, sequences, meta) in prepared-CSV row order.  We verify the row
-    count, finiteness, and — defensively — the exact sequence order; if the
-    order ever drifts we reindex by sequence (a sequence-level re-join is the
-    only safe fallback, and it is exact because sequences are unique keys
-    within a prepared CSV).
+    float32, sequences, meta) in prepared-CSV row order.  We verify finiteness
+    and then select the rows for ``csv_seqs`` **by sequence key**: sequences
+    are unique within a prepared CSV, and the ESMC embedding is a pure function
+    of the sequence, so a key lookup is exact even when the requested order
+    differs from the cache order (e.g. after the v4.2 Half-life dedup collapses
+    duplicate sequences to one row each).  This is the only safe re-join and it
+    is exact because sequences are unique keys.
     """
     path = esmc_cache_path(name)
     if not Path(path).exists():
@@ -130,21 +134,64 @@ def load_esmc_embeddings(name: str, csv_seqs, n: int) -> np.ndarray:
     emb, emb_seq = z['emb'], z['sequences']
     emb_seq = np.asarray(emb_seq, dtype=object)
     emb = np.asarray(emb, dtype=np.float32)
-    if emb.shape != (n, ESMC_DIM):
+    if emb.ndim != 2 or emb.shape[1] != ESMC_DIM:
         raise ValueError(
-            f'{name}: ESMC cache shape {emb.shape} != expected '
-            f'({n}, {ESMC_DIM}) — regenerate with esmc_embed.py')
+            f'{name}: ESMC cache shape {emb.shape} != expected (?, {ESMC_DIM}) '
+            f'— regenerate with esmc_embed.py')
     if not np.isfinite(emb).all():
         raise ValueError(f'{name}: ESMC cache contains non-finite values')
-    csv_arr = np.asarray(csv_seqs, dtype=object)
-    if emb_seq.shape != csv_arr.shape or not np.array_equal(emb_seq, csv_arr):
-        idx = {s: i for i, s in enumerate(emb_seq)}
-        missing = [s for s in csv_arr if s not in idx]
-        if missing:
-            raise ValueError(f'{name}: {len(missing)} sequences in the '
-                             f'prepared CSV are missing from the ESMC cache')
-        print(f'  [{name}] ESMC cache order drifted — reindexed by sequence')
-        emb = emb[[idx[s] for s in csv_arr]]
+    # key -> row (first occurrence; all rows of a repeated sequence carry the
+    # same embedding, so the choice is immaterial)
+    idx = {str(s): i for i, s in enumerate(emb_seq)}
+    csv_arr = [str(s) for s in csv_seqs]
+    missing = [s for s in csv_arr if s not in idx]
+    if missing:
+        raise ValueError(f'{name}: {len(missing)} sequences in the request '
+                         f'are missing from the ESMC cache (e.g. {missing[:3]})')
+    out = emb[[idx[s] for s in csv_arr]]
+    if out.shape[0] != n:
+        raise ValueError(f'{name}: selected {out.shape[0]} ESMC rows for {n} '
+                         f'requested')
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# MoLFormer-XL embedding cache (v4.2)
+# --------------------------------------------------------------------------- #
+def load_molformer_embeddings(name: str, csv_smiles, n: int) -> np.ndarray:
+    """Load the frozen MoLFormer-XL CLS embeddings cached for this endpoint.
+
+    The cache (``data/molformer/molformer_emb_<slug>.npz``) stores (emb (N,768)
+    float32, keys=SMILES, meta) in prepared-CSV row order.  We verify the row
+    count, finiteness, and — defensively — the exact SMILES order; if the order
+    ever drifts we reindex by SMILES.  (Unlike sequences, SMILES are NOT unique
+    within a prepared CSV — exact-duplicate SMILES appear — so a re-join by key
+    is only exact when the *order* matches; a drift therefore raises unless it
+    is resolvable, and we keep the strict order check as the primary path.)
+    """
+    path = molformer_cache_path(name)
+    if not Path(path).exists():
+        raise FileNotFoundError(
+            f'{name}: MoLFormer cache missing at {path} — '
+            f'run `.venv/Scripts/python.exe molformer_embed.py` first')
+    z = np.load(path, allow_pickle=True)
+    emb, emb_keys = z['emb'], z['keys']
+    emb_keys = np.asarray(emb_keys, dtype=object)
+    emb = np.asarray(emb, dtype=np.float32)
+    if emb.shape != (n, MOLEFORMER_DIM):
+        raise ValueError(
+            f'{name}: MoLFormer cache shape {emb.shape} != expected '
+            f'({n}, {MOLEFORMER_DIM}) — regenerate with molformer_embed.py')
+    if not np.isfinite(emb).all():
+        raise ValueError(f'{name}: MoLFormer cache contains non-finite values')
+    csv_arr = np.asarray(csv_smiles, dtype=object)
+    if not (emb_keys.shape == csv_arr.shape and np.array_equal(emb_keys, csv_arr)):
+        # SMILES are not unique keys here (duplicate SMILES exist), so a key
+        # re-join is ambiguous; require an exact order match instead.
+        raise ValueError(
+            f'{name}: MoLFormer cache row order does not match the prepared '
+            f'CSV (SMILES are not unique keys, so a re-join is ambiguous) — '
+            f'regenerate with molformer_embed.py against the current CSV')
     return emb
 
 
@@ -289,17 +336,25 @@ def split_molecular(n, keys, seed):
 # Training
 # --------------------------------------------------------------------------- #
 def train_endpoint_model(name, X, y, tr, va, lr=1e-3, epochs=80, patience=10,
-                         batch_size=128, seed=42):
-    """Train one single-head MixedADMETMLP on one endpoint."""
+                         batch_size=128, seed=42, hidden=(256, 128),
+                         regression_loss='mse'):
+    """Train one single-head MixedADMETMLP on one endpoint.
+
+    ``hidden`` sets the trunk widths (persisted in the checkpoint so the
+    predictor rebuilds the same architecture).  ``regression_loss`` is 'mse'
+    (default) or 'huber' — Huber is more robust to the heavy-tailed experimental
+    noise in the log-space regression targets (v4.2).
+    """
     torch.manual_seed(seed)
     np.random.seed(seed)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     ep = ENDPOINT_BY_NAME[name]
-    model = MixedADMETMLP(input_dim=X.shape[1], endpoints=[name]).to(device)
+    model = MixedADMETMLP(input_dim=X.shape[1], endpoints=[name],
+                          hidden=hidden).to(device)
     n_params = int(sum(p.numel() for p in model.parameters()))
     print(f'  [{name}] params={n_params:,} device={device} '
-          f'input_dim={X.shape[1]}')
+          f'input_dim={X.shape[1]} hidden={tuple(hidden)}')
 
     Xt = torch.from_numpy(X[tr]).to(device)
     yt = torch.from_numpy(y[tr]).to(device)
@@ -313,7 +368,10 @@ def train_endpoint_model(name, X, y, tr, va, lr=1e-3, epochs=80, patience=10,
             return F.binary_cross_entropy_with_logits(out[name].squeeze(1), y_true, pos_weight=pos_weight)
     else:
         pos_weight = None
+        huber_delta = 1.0
         def loss_fn(out, y_true):
+            if regression_loss == 'huber':
+                return F.huber_loss(out[name].squeeze(1), y_true, delta=huber_delta)
             return F.mse_loss(out[name].squeeze(1), y_true)
 
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
@@ -384,7 +442,52 @@ def endpoint_metrics(name, model, Xs, y, device):
 # --------------------------------------------------------------------------- #
 # Per-endpoint driver
 # --------------------------------------------------------------------------- #
-def run_endpoint(name, epochs, seed, model_root):
+def _dedup_by_key(X, y, keys, key_label):
+    """Collapse exact-duplicate keys to one row, averaging the (transformed)
+    target.  Returns (X, y, keys, dedup_info).
+
+    For Half-life (v4.2 "new weapon"): 1763 prepared rows contain only 768
+    unique sequences — 205 sequences are measured 2..82 times and the repeated
+    measurements differ (the experimental noise floor we measured: median
+    within-sequence std ~5.5e3 s).  Averaging each sequence's measurements in
+    model space (log10 s) removes that irreducible per-measurement noise
+    before training/evaluation, so the reported R2 is measured against the
+    *sequence-level* truth instead of individual repeat measurements.  This is
+    a standard, honest target-aggregation step (it changes what is being
+    predicted: the expected half-life of the sequence, not a single
+    measurement), and it is reported in the metrics file.
+    """
+    order, inv = np.unique(np.asarray(keys, dtype=object),
+                           return_inverse=True)
+    n_keys = len(order)
+    if n_keys == len(keys):
+        return X, y, keys, None
+    y64 = np.asarray(y, dtype=np.float64)
+    # per-unique-key mean target (float64) -> back to float32
+    sums = np.zeros(n_keys); counts = np.zeros(n_keys)
+    np.add.at(sums, inv, y64)
+    np.add.at(counts, inv, 1.0)
+    y_mean = (sums / counts).astype(np.float32)
+    # one representative feature row per unique key (first occurrence)
+    first_idx = np.argsort(inv, kind='stable')[:n_keys]
+    first_idx = np.sort(first_idx)  # ascending = first occurrence per key
+    X_new = X[first_idx].astype(np.float32)
+    info = {
+        'method': f'exact-duplicate {key_label}s collapsed to one row; target '
+                  f'= mean of the {key_label}s repeat measurements in model '
+                  f'space (log10 s for Half_life)',
+        'n_rows_before': int(len(keys)),
+        'n_rows_after': int(n_keys),
+        'n_duplicate_keys': int(len(keys) - n_keys),
+        'max_repeats': int(counts.max()),
+    }
+    return X_new, y_mean, [str(k) for k in order], info
+
+
+def run_endpoint(name, epochs, seed, model_root, cfg=None):
+    cfg = cfg or {}
+    hidden = cfg.get('hidden', (256, 128))
+    regression_loss = cfg.get('regression_loss', 'mse')
     ep = ENDPOINT_BY_NAME[name]
     slug = SLUGS[name]
     out_dir = Path(model_root) / slug
@@ -393,6 +496,15 @@ def run_endpoint(name, epochs, seed, model_root):
 
     X, y, keys, key_label, n = load_endpoint(name, PREPARED_CSV[name])
 
+    # v4.2 (Half-life): collapse exact-duplicate sequences to one row with the
+    # averaged (model-space) target, before any split, so repeats never leak
+    # across boundaries and the metric is measured at sequence level.
+    dedup_info = None
+    if cfg.get('dedup'):
+        X, y, keys, dedup_info = _dedup_by_key(X, y, keys, key_label)
+        n = len(keys)
+        print(f'  [{name}] DEDUP {dedup_info}')
+
     # v4.1: append the frozen ESMC-600M embedding to the sequence features.
     # The cache is verified against `keys` (the prepared-CSV sequences) inside
     # load_esmc_embeddings, so the concat is row-aligned by construction.
@@ -400,6 +512,15 @@ def run_endpoint(name, epochs, seed, model_root):
         emb = load_esmc_embeddings(name, keys, n)
         X = np.hstack([X, emb]).astype(np.float32)
         print(f'  [{name}] +ESMC {ESMC_MODEL}: input {X.shape[1] - ESMC_DIM} -> {X.shape[1]}')
+
+    # v4.2: append the frozen MoLFormer-XL CLS embedding to the molecular
+    # features.  The cache is verified against `keys` (the prepared-CSV SMILES)
+    # inside load_molformer_embeddings, so the concat is row-aligned by
+    # construction.
+    if getattr(ep, 'molformer', False):
+        emb = load_molformer_embeddings(name, keys, n)
+        X = np.hstack([X, emb]).astype(np.float32)
+        print(f'  [{name}] +MoLFormer {MOLEFORMER_MODEL}: input {X.shape[1] - MOLEFORMER_DIM} -> {X.shape[1]}')
 
     if ep.modality == 'sequence':
         tr, va, te, audit = split_sequence(n, keys, y, seed)
@@ -423,7 +544,8 @@ def run_endpoint(name, epochs, seed, model_root):
 
     print(f'  [{name}] primary split: {audit["counts"]}')
     model, device, pos_weight = train_endpoint_model(
-        name, Xs, y, tr, va, epochs=epochs, seed=seed)
+        name, Xs, y, tr, va, epochs=epochs, seed=seed, hidden=hidden,
+        regression_loss=regression_loss)
 
     te_rec = endpoint_metrics(name, model, Xs[te], y[te], device)
     va_rec = endpoint_metrics(name, model, Xs[va], y[va], device)
@@ -436,7 +558,9 @@ def run_endpoint(name, epochs, seed, model_root):
         r_scaler = StandardScaler().fit(X[r_tr])
         Xr = r_scaler.transform(X).astype(np.float32)
         r_model, _, _ = train_endpoint_model(name, Xr, y, r_tr, r_va,
-                                             epochs=epochs, seed=seed)
+                                             epochs=epochs, seed=seed,
+                                             hidden=hidden,
+                                             regression_loss=regression_loss)
         cmp_rec = endpoint_metrics(name, r_model, Xr[r_te], y[r_te], device)
         print(f'  [{name}] RANDOM-COMPARE TEST  ' +
               '  '.join(f'{k}={v}' for k, v in cmp_rec.items()
@@ -454,17 +578,29 @@ def run_endpoint(name, epochs, seed, model_root):
         'model': 'MixedADMETMLP (single head, per-endpoint)',
         'n_params': int(sum(p.numel() for p in model.parameters())),
         'input_dim': int(X.shape[1]),
+        'trunk_hidden': list(hidden),
+        'regression_loss': (regression_loss if ep.kind != KIND_BINARY else None),
         'feature_layout': (('428-dim classical (20 AAC + 400 DPC + 8 physchem) '
                             '+ 1152-dim frozen ESMC-600M embedding = 1580'
                             if getattr(ep, 'esmc', False) else
                             '428-dim: 20 AAC + 400 DPC + 8 physchem')
                            if ep.modality == 'sequence' else
-                           '2265-dim: 217 RDKit 2D descriptors + 2048-bit Morgan (radius 2)'),
+                           ('2265-dim classical (217 RDKit 2D descriptors + '
+                            '2048-bit Morgan radius 2) + 768-dim frozen '
+                            'MoLFormer-XL CLS embedding = 3033'
+                            if getattr(ep, 'molformer', False) else
+                            '2265-dim: 217 RDKit 2D descriptors + 2048-bit Morgan (radius 2)')),
         'esmc': (None if not getattr(ep, 'esmc', False) else
                  {'model': ESMC_MODEL, 'embedding_dim': ESMC_DIM,
                   'aggregation': 'mean-pooled token states',
                   'frozen': True,
                   'cache': esmc_cache_path(name)}),
+        'molformer': (None if not getattr(ep, 'molformer', False) else
+                      {'model': MOLEFORMER_MODEL, 'embedding_dim': MOLEFORMER_DIM,
+                       'aggregation': 'CLS token',
+                       'frozen': True,
+                       'cache': molformer_cache_path(name)}),
+        'target_aggregation': dedup_info,
         'target_transform': ep.target_transform,
         'raw_units': ep.raw_units,
         'data_source': 'Chemit797/PepADMET-Dataset (real experimental data)',
@@ -501,24 +637,43 @@ def main():
         if e not in ENDPOINT_BY_NAME:
             raise SystemExit(f'unknown endpoint {e}; valid: {list(ENDPOINT_BY_NAME)}')
 
+    # v4.2 per-endpoint "new weapon" config.
+    #   Half_life : collapse exact-duplicate sequences to one row (1763 -> 768)
+    #               with the averaged model-space target, + Huber loss (robust
+    #               to the heavy-tailed log-space measurement noise).
+    #   Caco2 / PAMPA_MDCK : MoLFormer-XL concat (done via the endpoint flag)
+    #               + Huber loss (robust to 1-2 log-unit permeability noise).
+    #   Hemolysis : unchanged (binary; no regression loss / dedup applies).
+    cfg_by_name = {
+        'Half_life':    {'dedup': True,  'regression_loss': 'huber'},
+        'Caco2':        {'regression_loss': 'huber'},
+        'PAMPA_MDCK':   {'regression_loss': 'huber'},
+        'Hemolysis':    {},
+    }
+
     t0 = time.time()
     all_metrics = {}
     for name in args.endpoints:
         print(f'\n=== {name} ===')
-        all_metrics[name] = run_endpoint(name, args.epochs, args.seed, args.model_root)
+        all_metrics[name] = run_endpoint(name, args.epochs, args.seed,
+                                         args.model_root, cfg=cfg_by_name.get(name, {}))
 
     # cross-endpoint summary
     root = Path(args.model_root)
     root.mkdir(parents=True, exist_ok=True)
     summary = {
-        'version': 'v4.1 (real-data + ESMC-600M, Chemit797/PepADMET-Dataset)',
+        'version': ('v4.2 (real-data + ESMC-600M sequence embeddings + '
+                    'MoLFormer-XL molecular embeddings, Chemit797/PepADMET-Dataset)'),
         'endpoints': {},
         'note': ('Each endpoint is an independent single-task model on its own '
                  'modality-appropriate features; there is no composite score '
                  'because the four datasets are disjoint molecules in two '
                  'different feature spaces. Primary split = homology-controlled '
                  '(sequence) or unique-SMILES random (molecular, no sequence '
-                 'available). All metrics measured on holdout.'),
+                 'available). All metrics measured on holdout. v4.2 adds frozen '
+                 'MoLFormer-XL CLS embeddings to the molecular endpoints and, '
+                 'for Half-life, aggregates exact-duplicate-sequence repeats to '
+                 'their mean (sequence-level target) + Huber loss.'),
     }
     for name, m in all_metrics.items():
         te = m['splits']['primary']['test']

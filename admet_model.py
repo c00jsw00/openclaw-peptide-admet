@@ -89,6 +89,8 @@ class MixedADMETMLP(nn.Module):
         super().__init__()
         self.endpoints: List[str] = list(endpoints) if endpoints is not None \
             else list(ENDPOINT_NAMES)
+        self.hidden = tuple(hidden)
+        self.dropout = dropout
         self.kinds: List[str] = [ENDPOINT_BY_NAME[e].kind for e in self.endpoints]
         self.num_classes: List[int] = [ENDPOINT_BY_NAME[e].num_classes
                                        for e in self.endpoints]
@@ -177,6 +179,10 @@ def save_mixed_model(model: 'MixedADMETMLP', path: Path,
         'kinds': model.kinds,
         'num_classes': model.num_classes,
         'pos_weights': pos_weights or {},
+        # v4.2: persist architecture so a widened/changed trunk still rebuilds
+        # exactly (older checkpoints lack these keys -> defaults on load).
+        'hidden': tuple(getattr(model, 'hidden', (256, 128))),
+        'dropout': float(getattr(model, 'dropout', 0.25)),
     }
     torch.save(blob, path)
     return path
@@ -192,7 +198,9 @@ def load_admet_model(path: str) -> tuple:
     cls = blob.get('model_class', 'ADMETMLP')
     if cls == 'MixedADMETMLP':
         model = MixedADMETMLP(input_dim=blob['input_dim'],
-                              endpoints=blob['endpoints'])
+                              endpoints=blob['endpoints'],
+                              hidden=blob.get('hidden', (256, 128)),
+                              dropout=blob.get('dropout', 0.25))
         model.load_state_dict(blob['state_dict'])
     else:
         model = ADMETMLP(input_dim=blob['input_dim'],

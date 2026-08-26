@@ -5,6 +5,11 @@
   "model": "MixedADMETMLP (single head, per-endpoint)",
   "n_params": 438529,
   "input_dim": 1580,
+  "trunk_hidden": [
+    256,
+    128
+  ],
+  "regression_loss": null,
   "feature_layout": "428-dim classical (20 AAC + 400 DPC + 8 physchem) + 1152-dim frozen ESMC-600M embedding = 1580",
   "esmc": {
     "model": "biohub/ESMC-600M",
@@ -13,6 +18,8 @@
     "frozen": true,
     "cache": "data/esmc/esmc_emb_hemolysis.npz"
   },
+  "molformer": null,
+  "target_aggregation": null,
   "target_transform": "identity",
   "raw_units": "",
   "data_source": "Chemit797/PepADMET-Dataset (real experimental data)",
@@ -79,6 +86,6 @@
       }
     }
   },
-  "elapsed_s": 17.1,
-  "generated_at": "2026-08-26 05:48:10"
+  "elapsed_s": 31.0,
+  "generated_at": "2026-08-26 17:47:30"
 }
