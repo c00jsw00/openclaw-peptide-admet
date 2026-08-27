@@ -235,7 +235,12 @@ peptide_admet_predictor.py (輸入 sequence/SMILES → 自動路由 →
   AUC_test 0.8557、MLP 預測 AUC 0.7624),但可用閾值下 precision 僅
   0.12,誤報成本讓修正不可行;非地板子集 R² 已 0.6317,理論天花板
   (非地板完美、地板→全域均值)= 0.5387。突破需地板分子的無審查
-  重新量測。完整可重現腳本與數字見 [`analysis/`](analysis/README.md)。
+  重新量測。**外部數據交叉驗證**(2026-08-28):直接訓練 PeptiVerse 論文
+  原始數據(HF `ChatterjeeLab/PeptiVerse_data`,PAMPA 6,869 + Caco-2 606,
+  作者預計算 ChemBERTa embedding + 2D),最佳 R² 0.4343、天花板 0.5014——
+  其 PAMPA 數據同樣含 −10 審查地板(3.5% 行、佔變異數 49.9%),R² > 0.7
+  跨數據集不可達。完整可重現腳本與數字見
+  [`analysis/`](analysis/README.md)。
 - **v4.2 Half_life 的「重複序列聚合」是真實的增益**(0.6973 → 0.7259,
   +0.0286):1,763 行 → 768 唯一序列,主指標改在**序列層級**報告;
   行層級的 0.6973 與序列層級的 0.7259 不是同一個量綱,不可直接比。

@@ -62,6 +62,12 @@ env/
 !data/pepadmet_*.csv
 *.feather
 *.parquet
+# PeptiVerse raw-data parquets ARE committed (~10 MB): deterministic
+# training input for analysis/peptiverse_experiment.py (source: HuggingFace
+# ChatterjeeLab/PeptiVerse_data, permeability_pampa / permeability_caco2,
+# ChemBERTa-77M-MLM embeddings precomputed by the authors).
+!data/peptiverse/
+!data/peptiverse/**/*.parquet
 
 # Model checkpoints
 checkpoints/

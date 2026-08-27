@@ -245,22 +245,27 @@ python peptide_admet_predictor.py --smiles "CC(=O)N[C@@H](C)C(=O)N[C@@H](CCCNC(=
 | Soft posterior-mean blend(β 掃描,val 選參) | 0.4651(+0.0009,噪音內) | ❌ 無實質增益 |
 | Tobit 審查似然模型(統計上最正確) | 0.4056 ± 0.024 | ❌ 比基準差 |
 | ChemBERTa-77M-MLM 嵌入替換(PeptiVerse 同款,4 組特徵 × 3 seeds) | PAMPA 0.4624 / Caco-2 0.4070 | ❌ 增益 < seed 間噪音 |
+| **PeptiVerse 原始數據直接訓練**(HF `ChatterjeeLab/PeptiVerse_data`,PAMPA 6,869 + Caco-2 606,作者 ChemBERTa embedding + 2D) | PAMPA 0.4343(天花板 0.5014)/ Caco-2 0.4302(天花板 0.5459) | ❌ 他們的數據**也有** −10 審查地板(3.5%,佔 SS 49.9%),R² > 0.7 同樣不可達 |
 
 輔助 ablation:RDKit 217 描述子單獨 **−0.47**(過拟合有害);更多 Morgan
 半徑 0.24;更寬/更深 MLP 0.44——信號在 Morgan 指紋,不在標量描述子或
 模型容量。
 
-**結論:0.70 在当前數據上不可達**。限制是審查地板(49.6% 變異數;地板
-分子只能被部分排序(AUC 0.76–0.86)而非精確標記,誤報成本使其不可用於
+**結論:0.70 在現有數據上不可達**——且此結論已用**外部數據交叉驗證**
+(2026-08-28):直接訓練 PeptiVerse(Nat. Commun. 2026)論文的原始
+PAMPA/Caco-2 數據,最佳 R² 0.4343,天花板 0.5014——其 PAMPA 數據**同樣
+含 −10 審查地板**(240 行 3.5%,佔全域變異數 49.9%,與我們 49.6% 幾乎
+相同),故「天花板 = 審查地板」跨數據集成立。限制是審查地板(地板分子
+只能被部分排序(AUC 0.76–0.86)而非精確標記,誤報成本使其不可用於
 修正)+ 標籤噪音,不是模型/特徵/架構。要突破需要**無審查的重新量測**
-(269 個地板分子的真實 logPapp)或更乾淨/更大的數據源。Caco-2 同理
+(地板分子的真實 logPapp)或更乾淨/更大的數據源。Caco-2 同理
 (0.3909):其重複量測 within-SD σ̂ ≈ 0.97 log 單位 ≈ 目標變數 SD,天花板
 更低,0.70 同樣不可達。
-嵌入替換路線(ChemBERTa,2026-08-28)亦為否定:PeptiVerse(Nat. Commun.
-2026)在無審查的 CycPeptMPDB 數據上報告 ChemBERTa ρ=0.69(PAMPA),但
-在我們**同分割、同訓練循環**下,ChemBERTa 單獨換入比 MoLFormer 差
-0.009–0.020,兩者拼合的增益(+0.004 PAMPA / −0.003 Caco-2)小於 seed
-間噪音——該優勢未遷移到我們的正典肽 + 審查地板數據。
+嵌入替換路線(ChemBERTa,2026-08-28)亦為否定:PeptiVerse 報告 ChemBERTa
+PAMPA ρ=0.69,但**其原始數據的 val 子集審查地板過量**(val 5.3% vs
+train 2.9%),且在我們**同分割、同訓練循環**下,ChemBERTa 單獨換入比
+MoLFormer 差 0.009–0.020,兩者拼合的增益(+0.004 PAMPA / −0.003 Caco-2)
+小於 seed 間噪音——該優勢未遷移到我們的正典肽 + 審查地板數據。
 
 ---
 
@@ -300,7 +305,11 @@ python peptide_admet_predictor.py --smiles "CC(=O)N[C@@H](C)C(=O)N[C@@H](CCCNC(=
   兩階段地板法、soft posterior-mean blend、Tobit 審查似然模型),
   最佳 0.4651,全部 ≤ baseline + 重訓噪音 ±0.01;2026-08-28 第 6 條
   (PeptiVerse 同款的 ChemBERTa-77M-MLM 嵌入替換,4 組特徵 × 3 seeds)
-  同樣否定(拼合增益 +0.004,小於 seed 間噪音 ±0.006–0.011)。**根因**:
+  同樣否定(拼合增益 +0.004,小於 seed 間噪音 ±0.006–0.011);2026-08-28
+  又用**外部數據交叉驗證**:直接訓練 PeptiVerse 論文的原始 PAMPA/Caco-2
+  數據(HF `ChatterjeeLab/PeptiVerse_data`),最佳 R² 0.4343、天花板
+  0.5014——其 PAMPA 數據**同樣含 −10 審查地板**(3.5% 行、佔變異數 49.9%),
+  R² > 0.7 在外部數據上同樣不可達。**根因**:
   目標 logPapp
   有**左側審查地板**——269 行(3.7%)= -10.0000(assay 偵測下限,真實值
   佔目標變異數 49.6%,且只能被**部分排序**而非精確標記(最佳 LightGBM

@@ -13,9 +13,9 @@
 | R² 損失集中在哪 | 地板點佔總平方誤差 **64%**(47 個 test 點,MAE 3.43 log 單位);非地板子集模型 R² 已達 **0.6317** | `round3_strong_2d.py` 段 A |
 | 地板分子可否從結構預測? | **只能部分排序、無可用操作點**。最佳 LightGBM 地板分類 AUC_test = **0.8557**(val 0.8251)、MLP 預測值排序 AUC 0.7624;val 調閾下 precision 僅 0.121(recall 0.617),兩階段法 R² 崩潰 | `floor_predictability.py`、`soft_blend.py` |
 | 理論天花板 | 完美非地板回歸 + 地板→全域均值 = **R² 0.5387**;oracle 完美識別地板 = 0.807(不可達) | `r2_ceiling.py` |
-| 5 條提升路線 | 全部 ≤ 0.47(見下表),無一超過 baseline 0.4642 | round1–3 + blend + tobit |
+| 6 條提升路線 + 1 份外部數據 | 全部 ≤ 0.47(見下表 + 第 6/7 節),無一超過 baseline 0.4642 | round1–3 + blend + tobit + ChemBERTa + PeptiVerse |
 
-## 五條路線的實測結果(同一分割:seed 42、unique-SMILES 70/10/20)
+## 六條路線的實測結果(同一分割:seed 42、unique-SMILES 70/10/20)
 
 | 路線 | 最佳 test R² | 判定 |
 |---|---:|---|
@@ -25,6 +25,7 @@
 | 3. 兩階段地板法(classifier→regressor) | AUC 0.86 但最佳閾 precision 0.121 → R² −1.21 | ❌ 誤報成本使地板不可用於修正 |
 | 4. Soft posterior-mean blend(β 掃描,val 選參) | 0.4651(+0.0009,噪音內) | ❌ 無實質增益 |
 | 5. Tobit 審查似然(統計上最正確) | 0.4056 ± 0.024 | ❌ 比基準差 |
+| 6. 嵌入替換:ChemBERTa-77M-MLM(PeptiVerse 同款) | 0.4624(PAMPA C,增益 < 噪音) | ❌ 無顯著增益,見第 6 節 |
 
 輔助 ablation(round1):RDKit 217 描述子單獨 **−0.47**(有害,過拟合);
 更多 Morgan 半徑 0.24(過拟合);更寬/更深 MLP 0.44(無幫助);信號在
@@ -51,6 +52,42 @@ early-stop 逐字一致)下測試 4 組特徵 × 3 seeds(42/123/7):
 無審查地板、以 Spearman ρ 報告;我們是正典肽、有佔 49.6% SS 的審查
 地板、以 R² 報告。管線維持 frozen MoLFormer-XL 不變,ChemBERTa 嵌入
 不進入 `models_v4/`。
+
+## 第 7 條:PeptiVerse 原始數據交叉驗證(2026-08-28)
+
+用 PeptiVerse(Nat. Commun. 2026, s41467-026-74167-w)**論文自己的原始數據**
+(HuggingFace `ChatterjeeLab/PeptiVerse_data`)直接訓練,驗證「天花板 = 審查
+地板」是否跨數據集成立。PAMPA 6,869 行(CycPeptMPDB 環肽,欄位名
+`sequence` 但實為 SMILES)+ Caco-2 606 行;特徵 = 作者**預計算的
+ChemBERTa-77M-MLM 384d embedding**(即其報告 ρ=0.69 的那個)+ 自建
+RDKit/Morgan 2D 2265d;分割 (a) 作者 train→val(5,187→1,682)對照其
+ρ,(b) 我們的 unique-SMILES 70/10/20(4,808/687/1,374,無重複 SMILES
+洩漏):
+
+| 端點 | 配置 | test R² | test Spearman ρ |
+|---|---|---:|---:|
+| PAMPA(N=6,869;floor 240 行 3.5%,SS 佔 49.9%,天花板 **0.5014**) | E1 ChemBERTa | 0.3892 ± 0.0135 | 0.7490 ± 0.0055 |
+| | E2 ChemBERTa+2D | **0.4343 ± 0.0030** | **0.7696 ± 0.0059** |
+| | E3 2D only | 0.4209 ± 0.0101 | 0.7631 ± 0.0074 |
+| Caco-2(N=606;floor 15 行 2.5%,SS 佔 45.4%,天花板 **0.5459**) | E2 ChemBERTa+2D | 0.4302 ± 0.0919 | 0.6025 ± 0.1188 |
+
+**結論**:
+
+1. **R² > 0.7 在他們的數據上同樣數學上不可達**:這份 PAMPA 數據**也有
+   −10 審查地板**(240 行 3.5%,佔全域 SS 49.9%;Caco-2 15 行,45.4%),
+   oracle 天花板 0.5014/0.5459——與我們數據(49.6%、0.5387)幾乎相同。
+   「天花板 = 審查地板」**跨數據集成立**。
+2. 最佳 R² = 0.4343(PAMPA E2),甚至**低於**我們 PepADMET 數據的 baseline
+   0.4642。
+3. 作者 split 的 val ρ = 0.6330(E1)/ 0.6451(E2),與其報告的 0.69 同級但
+   略低;注意其 train/val **floor 比例失衡**(PAMPA val 5.3% vs train
+   2.9%;Caco-2 val 7.4% vs 1.2%)——val 過量審查行,拖低 val ρ。我們
+   的 leakage-controlled test(E2)ρ = 0.7696 反而更高(test floor 3.4%
+   較少 tie)。
+4. 非地板子集 R² = 0.6031(E2),與我們數據的 0.6317 相近——**兩份數據的
+   非地板模型表現一致,差距仍全在地板**。
+5. ChemBERTa+2D 比純 2D 在 PAMPA 高 0.0134(3 seed 方向一致),幅度在
+   噪音邊緣;與第 6 條(我們數據上增益 < 噪音)一致:嵌入增益小且不穩。
 
 ## 為何 0.7 不可達(數學)
 
@@ -96,6 +133,9 @@ cd <repo root>
 .venv/Scripts/python.exe chemberta_embed.py                    # ~30 min,生成 data/chemberta/*.npz(需 transformers + HF 下載)
 .venv/Scripts/python.exe analysis/chemberta_retrain.py pampa   # ~2 min(讀既有快取)
 .venv/Scripts/python.exe analysis/chemberta_retrain.py caco2   # ~12 min(首次建 _caco2_feat_cache.npz)
+
+# 第 7 條(PeptiVerse 原始數據交叉驗證;data/peptiverse/*.parquet 已 commit):
+.venv/Scripts/python.exe analysis/peptiverse_experiment.py both  # 首次 ~10 min(建 _pv_*_feat_cache.npz),之後 < 2 min
 ```
 
 - 所有腳本用**與主訓練管線逐字相同的分割**(`train_pepadmet_model.py`
@@ -121,3 +161,4 @@ cd <repo root>
 | `tobit_censored.py` | Tobit 審查似然模型(50 ep,多 seed) | 0.4056±0.024 |
 | `tobit_sanity.py` | `_log_phi_cdf`/`nll_tobit` 數值驗證(vs scipy) | ALL PASSED |
 | `chemberta_retrain.py` | 嵌入替換實驗(PeptiVerse 同款 ChemBERTa-77M-MLM),4 組特徵 × 3 seeds,`[pampa\|caco2]` | PAMPA C 0.4624 / Caco-2 C 0.4070,均 < 噪音增益(否決) |
+| `peptiverse_experiment.py` | 第 7 條:PeptiVerse 原始數據(HF `ChatterjeeLab/PeptiVerse_data`)× 3 特徵 × 3 seeds,兩種分割(作者 train→val + 我們 unique-SMILES),`[pampa\|caco2\|both]` | PAMPA 最佳 R² 0.4343(天花板 0.5014)/ Caco-2 0.4302(天花板 0.5459),>0.7 不可達跨數據集成立 |
