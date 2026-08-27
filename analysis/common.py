@@ -28,6 +28,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
 SEED = 42
+DATA = os.path.join(_REPO_ROOT, 'data')
 DATA_CSV = 'data/pepadmet_pampa_mdck.csv'
 TARGET = 'PAMPA_MDCK'
 FEAT_CACHE = '_pampa_feat_cache.npz'

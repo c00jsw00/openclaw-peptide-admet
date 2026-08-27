@@ -30,6 +30,28 @@
 更多 Morgan 半徑 0.24(過拟合);更寬/更深 MLP 0.44(無幫助);信號在
 Morgan 指紋,不在標量描述子或模型容量。
 
+## 第 6 條路線:嵌入替換 — ChemBERTa(PeptiVerse 同款,2026-08-28)
+
+PeptiVerse(Nat. Commun. 2026, s41467-026-74167-w)報告「嵌入選擇 > 模型
+架構」,且在 PAMPA 上 ChemBERTa(Spearman ρ=0.69)勝過 PeptideCLM
+(ρ=0.59)、Caco-2 0.80 vs 0.75。他們用的模型與我們測試的**完全相同**:
+`deepchem/ChemBERTa-77M-MLM`(CLS token,384 維 frozen)。我們在**同分割、
+同訓練循環**(直接 import 主訓練管線的 `train_endpoint_model`,Huber/Adam/
+early-stop 逐字一致)下測試 4 組特徵 × 3 seeds(42/123/7):
+
+| 端點 | A: mol+MoLFormer(v4.2 重跑) | B: mol+ChemBERTa | C: mol+MoLFormer+ChemBERTa | D: ChemBERTa 單獨 |
+|---|---:|---:|---:|---:|
+| PAMPA | 0.4581 ± 0.0063 | 0.4494 ± 0.0187 | 0.4624 ± 0.0083 | 0.3394 ± 0.0254 |
+| Caco-2 | 0.4100 ± 0.0079 | 0.3896 ± 0.0035 | 0.4070 ± 0.0109 | 0.2475 ± 0.0130 |
+
+**結論:否定**。ChemBERTa 單獨換入(B)比 MoLFormer 差 0.009–0.020;
+兩者拼合(C)在 PAMPA 平均 +0.0043、Caco-2 −0.0030,**都小於 seed 間
+噪音(±0.006–0.011)**,不構成可報告的增益。PeptiVerse 的優勢沒有遷移到
+我們的數據——合理原因:他們的 PAMPA 來自 CycPeptMPDB(非正典/環肽)、
+無審查地板、以 Spearman ρ 報告;我們是正典肽、有佔 49.6% SS 的審查
+地板、以 R² 報告。管線維持 frozen MoLFormer-XL 不變,ChemBERTa 嵌入
+不進入 `models_v4/`。
+
 ## 為何 0.7 不可達(數學)
 
 R² = 1 − SSE/SST。PAMPA 目標 y = logPapp 的變異數結構:
@@ -69,6 +91,11 @@ cd <repo root>
 .venv/Scripts/python.exe analysis/floor_predictability.py      # ~10 min
 .venv/Scripts/python.exe analysis/soft_blend.py                # ~10 min
 .venv/Scripts/python.exe analysis/tobit_censored.py            # ~15 min
+
+# 第 6 條路線(ChemBERTa 嵌入替換):
+.venv/Scripts/python.exe chemberta_embed.py                    # ~30 min,生成 data/chemberta/*.npz(需 transformers + HF 下載)
+.venv/Scripts/python.exe analysis/chemberta_retrain.py pampa   # ~2 min(讀既有快取)
+.venv/Scripts/python.exe analysis/chemberta_retrain.py caco2   # ~12 min(首次建 _caco2_feat_cache.npz)
 ```
 
 - 所有腳本用**與主訓練管線逐字相同的分割**(`train_pepadmet_model.py`
@@ -93,3 +120,4 @@ cd <repo root>
 | `soft_blend.py` | 後驗均值 soft blend,β 掃描,val 選參 | 0.4651(+0.0009) |
 | `tobit_censored.py` | Tobit 審查似然模型(50 ep,多 seed) | 0.4056±0.024 |
 | `tobit_sanity.py` | `_log_phi_cdf`/`nll_tobit` 數值驗證(vs scipy) | ALL PASSED |
+| `chemberta_retrain.py` | 嵌入替換實驗(PeptiVerse 同款 ChemBERTa-77M-MLM),4 組特徵 × 3 seeds,`[pampa\|caco2]` | PAMPA C 0.4624 / Caco-2 C 0.4070,均 < 噪音增益(否決) |

@@ -219,7 +219,7 @@ python peptide_admet_predictor.py --smiles "CC(=O)N[C@@H](C)C(=O)N[C@@H](CCCNC(=
 ## PAMPA/MDCK R² 天花板調查(2026-08-27,「能否到 0.70?」)
 
 對 PAMPA R² 0.4642 能否提升到 0.70 做了系統性調查:**同一控制分割
-(seed 42、唯一 SMILES 70/10/20)下測試 5 條路線,全部 ≤ 0.47,無一
+(seed 42、唯一 SMILES 70/10/20)下測試 6 條路線,全部 ≤ 0.47,無一
 超過 baseline**。完整可重現分析(腳本 + 精確數字)見
 [`analysis/`](analysis/README.md)。
 
@@ -234,7 +234,7 @@ python peptide_admet_predictor.py --smiles "CC(=O)N[C@@H](C)C(=O)N[C@@H](CCCNC(=
 | 非地板子集模型 R² | **0.6317**(模型本身不差,損失集中在地板) |
 | 理論天花板(非地板完美,地板→全域均值) | **R² 0.5387**;oracle 完美標記全部 47 個 test 地板分子 = 0.8073(需 AUC≈1 + 零誤報,不可達) |
 
-**五條路線(全部實測,同一分割)**:
+**六條路線(全部實測,同一分割)**:
 
 | 路線 | 最佳 test R² | 判定 |
 |---|---:|---|
@@ -244,6 +244,7 @@ python peptide_admet_predictor.py --smiles "CC(=O)N[C@@H](C)C(=O)N[C@@H](CCCNC(=
 | 兩階段地板法(classifier→regressor) | 最佳閾值 precision 0.121 → R² −1.21 | ❌ 誤報成本過高 |
 | Soft posterior-mean blend(β 掃描,val 選參) | 0.4651(+0.0009,噪音內) | ❌ 無實質增益 |
 | Tobit 審查似然模型(統計上最正確) | 0.4056 ± 0.024 | ❌ 比基準差 |
+| ChemBERTa-77M-MLM 嵌入替換(PeptiVerse 同款,4 組特徵 × 3 seeds) | PAMPA 0.4624 / Caco-2 0.4070 | ❌ 增益 < seed 間噪音 |
 
 輔助 ablation:RDKit 217 描述子單獨 **−0.47**(過拟合有害);更多 Morgan
 半徑 0.24;更寬/更深 MLP 0.44——信號在 Morgan 指紋,不在標量描述子或
@@ -255,6 +256,11 @@ python peptide_admet_predictor.py --smiles "CC(=O)N[C@@H](C)C(=O)N[C@@H](CCCNC(=
 (269 個地板分子的真實 logPapp)或更乾淨/更大的數據源。Caco-2 同理
 (0.3909):其重複量測 within-SD σ̂ ≈ 0.97 log 單位 ≈ 目標變數 SD,天花板
 更低,0.70 同樣不可達。
+嵌入替換路線(ChemBERTa,2026-08-28)亦為否定:PeptiVerse(Nat. Commun.
+2026)在無審查的 CycPeptMPDB 數據上報告 ChemBERTa ρ=0.69(PAMPA),但
+在我們**同分割、同訓練循環**下,ChemBERTa 單獨換入比 MoLFormer 差
+0.009–0.020,兩者拼合的增益(+0.004 PAMPA / −0.003 Caco-2)小於 seed
+間噪音——該優勢未遷移到我們的正典肽 + 審查地板數據。
 
 ---
 
@@ -292,7 +298,10 @@ python peptide_admet_predictor.py --smiles "CC(=O)N[C@@H](C)C(=O)N[C@@H](CCCNC(=
   2026-08-27 在**與主指標相同的控制分割**下實測了 5 條提升路線
   (rank-Gaussian 目標變換、LightGBM × 128 超參 × 4 特徵集 + ensemble、
   兩階段地板法、soft posterior-mean blend、Tobit 審查似然模型),
-  最佳 0.4651,全部 ≤ baseline + 重訓噪音 ±0.01。**根因**:目標 logPapp
+  最佳 0.4651,全部 ≤ baseline + 重訓噪音 ±0.01;2026-08-28 第 6 條
+  (PeptiVerse 同款的 ChemBERTa-77M-MLM 嵌入替換,4 組特徵 × 3 seeds)
+  同樣否定(拼合增益 +0.004,小於 seed 間噪音 ±0.006–0.011)。**根因**:
+  目標 logPapp
   有**左側審查地板**——269 行(3.7%)= -10.0000(assay 偵測下限,真實值
   佔目標變異數 49.6%,且只能被**部分排序**而非精確標記(最佳 LightGBM
   地板分類 AUC_test 0.8557、MLP 預測 AUC 0.7624,但可用閾值下 precision

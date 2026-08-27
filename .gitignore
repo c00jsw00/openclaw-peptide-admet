@@ -85,6 +85,15 @@ _[a-z]*.log
 # + MoLFormer 768, ~8 min to rebuild on CPU). NOT committed: it duplicates
 # data already in data/ (CSV + molformer npz) and would bloat the repo.
 _pampa_feat_cache.npz
+# Caco-2 feature cache rebuilt by analysis/chemberta_retrain.py caco2
+# (RDKit 217 + Morgan r2, ~10 min to rebuild on CPU). NOT committed.
+_caco2_feat_cache.npz
+# ChemBERTa embeddings: negative-result experiment only (route 6, not in the
+# v4.2 pipeline). Rebuild with `chemberta_embed.py` (~30 min, needs
+# transformers + HF download of deepchem/ChemBERTa-77M-MLM) — see
+# analysis/README.md. The measured results are committed as
+# analysis/chemberta_results{,_caco2}.json.
+data/chemberta/
 
 # GitHub
 .github/

@@ -215,15 +215,21 @@ peptide_admet_predictor.py (輸入 sequence/SMILES → 自動路由 →
   commit,重訓/推論不需重算。
 - **v4.2 分子端點的「換武器」沒有突破瓶頸**:frozen MoLFormer-XL
   嵌入對 Caco-2 / PAMPA 的 R² 增益 +0.005~+0.007,與同端點兩次
-  獨立重訓的 ±0.01 差可比擬。誠實結論:**分子端點的瓶頸是標籤噪音
+  獨立重訓的 ±0.01 差可比擬。2026-08-28 進一步實測了 PeptiVerse
+  (Nat. Commun. 2026)在 PAMPA 上報告有效的 **ChemBERTa-77M-MLM**
+  嵌入(同款模型、CLS token,同分割同訓練循環,4 組特徵 × 3 seeds):
+  單獨換入比 MoLFormer 差 0.009–0.020,拼合增益 +0.004(PAMPA)/
+  −0.003(Caco-2),小於 seed 間噪音——**「換 frozen 分子 encoder
+  不解決」現在有直接實測證據**。誠實結論:**分子端點的瓶頸是標籤噪音
   (同分子重複量測差 0.6–0.94 log 單位),不是 2D 描述子表示層**;
-  換更強的 frozen 分子 encoder 不解決這個問題,要解決需要
+  要解決需要
   (a) 更多/更乾淨的量測數據,(b) 對重複量測做目標聚合(分子端點的
   SMILES 重複率遠低於序列端點,聚合空間小),或 (c) 任務特定的
   fine-tune(與本管線「frozen 嵌入 + 輕量 head」的策略衝突)。
 - **PAMPA 0.4642 → 0.70 已系統性調查並否定**(2026-08-27,同控制分割
-  實測 5 條路線:rank-Gaussian、LightGBM×128 超參+ensemble、兩階段地板法、
-  soft blend、Tobit,最佳 0.4651,全部 ≤ baseline+噪音)。**根因**:目標
+  實測 6 條路線:rank-Gaussian、LightGBM×128 超參+ensemble、兩階段地板法、
+  soft blend、Tobit、ChemBERTa 嵌入替換,最佳 0.4651,全部 ≤ baseline+噪音)。
+  **根因**:目標
   logPapp 有左側審查地板——269 行(3.7%)= -10.0000(assay 偵測下限),
   佔目標變異數 49.6%;地板分子只能被部分排序(最佳 LightGBM 分類
   AUC_test 0.8557、MLP 預測 AUC 0.7624),但可用閾值下 precision 僅
