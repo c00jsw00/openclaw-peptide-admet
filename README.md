@@ -246,6 +246,7 @@ python peptide_admet_predictor.py --smiles "CC(=O)N[C@@H](C)C(=O)N[C@@H](CCCNC(=
 | Tobit 審查似然模型(統計上最正確) | 0.4056 ± 0.024 | ❌ 比基準差 |
 | ChemBERTa-77M-MLM 嵌入替換(PeptiVerse 同款,4 組特徵 × 3 seeds) | PAMPA 0.4624 / Caco-2 0.4070 | ❌ 增益 < seed 間噪音 |
 | **PeptiVerse 原始數據直接訓練**(HF `ChatterjeeLab/PeptiVerse_data`,PAMPA 6,869 + Caco-2 606,作者 ChemBERTa embedding + 2D) | PAMPA 0.4343(天花板 0.5014)/ Caco-2 0.4302(天花板 0.5459) | ❌ 他們的數據**也有** −10 審查地板(3.5%,佔 SS 49.9%),R² > 0.7 同樣不可達 |
+| **pepADMET 標籤平均 A/B**(JCIM 2026, 10.1021/acs.jcim.5c02518:重複量測取算術平均) | PAMPA Δ −0.0152 / Caco-2 Δ +0.0025 | ❌ 我們的數據幾乎無重複(1.01 次/SMILES),平均化是空操作——非 pepADMET 高 R² 的原因 |
 
 輔助 ablation:RDKit 217 描述子單獨 **−0.47**(過拟合有害);更多 Morgan
 半徑 0.24;更寬/更深 MLP 0.44——信號在 Morgan 指紋,不在標量描述子或

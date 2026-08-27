@@ -239,7 +239,12 @@ peptide_admet_predictor.py (輸入 sequence/SMILES → 自動路由 →
   原始數據(HF `ChatterjeeLab/PeptiVerse_data`,PAMPA 6,869 + Caco-2 606,
   作者預計算 ChemBERTa embedding + 2D),最佳 R² 0.4343、天花板 0.5014——
   其 PAMPA 數據同樣含 −10 審查地板(3.5% 行、佔變異數 49.9%),R² > 0.7
-  跨數據集不可達。完整可重現腳本與數字見
+  跨數據集不可達。**pepADMET 標籤平均 A/B**(2026-08-28):實測其前處理
+  「重複量測取算術平均」對我們的數據是空操作(僅 1.01 次量測/SMILES、
+  0 個混合地板組),PAMPA Δ −0.0152 / Caco-2 Δ +0.0025,均在 seed 噪音
+  內——與 pepADMET(JCIM 2026, 66, 936)報告 R² 0.435–0.657 的差距不能
+  歸因於標籤平均;其分割為隨機 8:1:1 且無 SMILES 層級 train/test
+  隔離,比我們的 leakage-controlled 分割寬。完整可重現腳本與數字見
   [`analysis/`](analysis/README.md)。
 - **v4.2 Half_life 的「重複序列聚合」是真實的增益**(0.6973 → 0.7259,
   +0.0286):1,763 行 → 768 唯一序列,主指標改在**序列層級**報告;

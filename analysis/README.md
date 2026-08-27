@@ -13,7 +13,7 @@
 | R² 損失集中在哪 | 地板點佔總平方誤差 **64%**(47 個 test 點,MAE 3.43 log 單位);非地板子集模型 R² 已達 **0.6317** | `round3_strong_2d.py` 段 A |
 | 地板分子可否從結構預測? | **只能部分排序、無可用操作點**。最佳 LightGBM 地板分類 AUC_test = **0.8557**(val 0.8251)、MLP 預測值排序 AUC 0.7624;val 調閾下 precision 僅 0.121(recall 0.617),兩階段法 R² 崩潰 | `floor_predictability.py`、`soft_blend.py` |
 | 理論天花板 | 完美非地板回歸 + 地板→全域均值 = **R² 0.5387**;oracle 完美識別地板 = 0.807(不可達) | `r2_ceiling.py` |
-| 6 條提升路線 + 1 份外部數據 | 全部 ≤ 0.47(見下表 + 第 6/7 節),無一超過 baseline 0.4642 | round1–3 + blend + tobit + ChemBERTa + PeptiVerse |
+| 6 條提升路線 + 2 份外部數據 | 全部 ≤ 0.47(見下表 + 第 6/7/8 節),無一超過 baseline 0.4642 | round1–3 + blend + tobit + ChemBERTa + PeptiVerse + 標籤平均 A/B |
 
 ## 六條路線的實測結果(同一分割:seed 42、unique-SMILES 70/10/20)
 
@@ -89,6 +89,42 @@ RDKit/Morgan 2D 2265d;分割 (a) 作者 train→val(5,187→1,682)對照其
 5. ChemBERTa+2D 比純 2D 在 PAMPA 高 0.0134(3 seed 方向一致),幅度在
    噪音邊緣;與第 6 條(我們數據上增益 < 噪音)一致:嵌入增益小且不穩。
 
+## 第 8 條:pepADMET 標籤平均 A/B(2026-08-28)
+
+pepADMET(J. Chem. Inf. Model. 2026, 66, 936–946, 10.1021/acs.jcim.5c02518)
+的 Methods 第 (1) 步對重複量測做**標籤平均**("If the same molecule
+corresponded to multiple experimental values, their arithmetic mean was
+used")+ InChIKey 去重。其 PAMPA/Caco-2 端點 test R² 報告為 0.435–0.657。
+A/B 實驗(同特徵、同 leakage-controlled unique-SMILES 70/10/20 分割、同
+MLP+Huber 訓練循環;A = 原始行,即 v4.2 協議;B = 每唯一 SMILES 一筆、
+y = 重複量測算術平均,地板行原值進平均、不做再審查):
+
+| 端點 | 行數→唯一 SMILES | A: 原始行 | B: 標籤平均 | Δ mean |
+|---|---|---:|---:|---:|
+| PAMPA | 7,283 → 7,177(平均 1.015 次/SMILES) | 0.4472 ± 0.0337 | 0.4320 ± 0.0285 | **−0.0152** |
+| Caco-2 | 7,429 → 7,376(平均 1.007 次/SMILES) | 0.3762 ± 0.0207 | 0.3787 ± 0.0168 | **+0.0025** |
+
+**結論:標籤平均不是 pepADMET 高 R² 的原因**。
+
+1. 我們的數據**幾乎沒有重複量測**:PAMPA 僅 104 個 SMILES 有 2–3 筆
+   (210 行)、Caco-2 僅 52 個(105 行),平均 1.01 次/SMILES——平均化
+   幾乎是空操作。
+2. **0 個 SMILES 混合地板/非地板、0 個被平均抬出地板**——標籤平均甚至
+   不改變審查地板的結構(與「重複組 within-SD σ̂ ≈ 0.20」的診斷一致:
+   重複噪音本來就小,主要瓶頸是審查,不是重複)。
+3. Δ 全在 seed 噪音內(PAMPA −0.0152 甚至為負:seed 42 B=0.4272 <
+   A=0.4642,seed 123 B=0.4669 ≈ A=0.4759,seed 7 持平)。**A seed=42
+   精確重現已提交的 baseline 0.4642**,協議校準正確。
+
+因此 pepADMET 的 0.435–0.657 與我們的 0.46/0.40 的差距**不能歸因於標籤
+平均**。剩餘的合理解釋:(a) 它們用**隨機 8:1:1 分割且無 SMILES/InChIKey
+層級的 train/test 隔離**(Methods 亦提 0.75:0.25 兩種描述),結構近鄰可能
+同時出現在 train 與 test,test R² 被推高——我們的 leakage-controlled 分割
+更嚴;(b) 它們的模型是 GNN + 描述子融合 + RFE-RF 特徵選取,與我們的
+MLP 不同。其「模型好壞」標準為 **R² 為主、MAE/RMSE 並列,超參以
+grid-search + 交叉驗證 R² 最大化選模**(Methods 原文),未報告 AUC、未
+討論 −10 審查地板。
+
 ## 為何 0.7 不可達(數學)
 
 R² = 1 − SSE/SST。PAMPA 目標 y = logPapp 的變異數結構:
@@ -136,6 +172,9 @@ cd <repo root>
 
 # 第 7 條(PeptiVerse 原始數據交叉驗證;data/peptiverse/*.parquet 已 commit):
 .venv/Scripts/python.exe analysis/peptiverse_experiment.py both  # 首次 ~10 min(建 _pv_*_feat_cache.npz),之後 < 2 min
+
+# 第 8 條(pepADMET 標籤平均 A/B;讀既有快取):
+.venv/Scripts/python.exe analysis/label_avg_experiment.py both    # ~12 min,12 組(A/B × 2 端點 × 3 seeds)
 ```
 
 - 所有腳本用**與主訓練管線逐字相同的分割**(`train_pepadmet_model.py`
@@ -162,3 +201,4 @@ cd <repo root>
 | `tobit_sanity.py` | `_log_phi_cdf`/`nll_tobit` 數值驗證(vs scipy) | ALL PASSED |
 | `chemberta_retrain.py` | 嵌入替換實驗(PeptiVerse 同款 ChemBERTa-77M-MLM),4 組特徵 × 3 seeds,`[pampa\|caco2]` | PAMPA C 0.4624 / Caco-2 C 0.4070,均 < 噪音增益(否決) |
 | `peptiverse_experiment.py` | 第 7 條:PeptiVerse 原始數據(HF `ChatterjeeLab/PeptiVerse_data`)× 3 特徵 × 3 seeds,兩種分割(作者 train→val + 我們 unique-SMILES),`[pampa\|caco2\|both]` | PAMPA 最佳 R² 0.4343(天花板 0.5014)/ Caco-2 0.4302(天花板 0.5459),>0.7 不可達跨數據集成立 |
+| `label_avg_experiment.py` | 第 8 條:pepADMET 標籤平均 A/B,2 端點 × A/B × 3 seeds,`[pampa\|caco2\|both]` | PAMPA Δ −0.0152 / Caco-2 Δ +0.0025(均噪音內,否決) |
