@@ -66,7 +66,7 @@ eval mode; max absolute output difference = **8.3 × 10⁻⁷** (float32
 rounding), confirming the port is numerically faithful.
 
 **Status**: training in progress (3 seeds × up to 40 epochs, early stop).
-Partial results (seed=42, 5 epochs):
+Partial results (seed=42, 7 epochs, 2026-08-29 07:05 Taipei time):
 
 | Epoch | val_r2 | test_r2 | test_nf |
 |---:|---:|---:|---:|
@@ -75,11 +75,14 @@ Partial results (seed=42, 5 epochs):
 | 3 | 0.3060 | 0.3872 | 0.4555 |
 | 4 | 0.3398 | 0.4247 | 0.4804 |
 | 5 | 0.3245 | 0.3966 | 0.2568 |
+| 6 | 0.3242 | 0.3781 | 0.3889 |
+| 7 | **0.3878** | **0.4635** | **0.5044** |
 
-Best so far: val_r2 0.3398 (ep4), test_r2 0.4247 — below the TabPFN
-result (0.4962) at epoch 5 but still rising. The CPU run (killed at
-reboot) reached test_r2 0.5051 at epoch 7 before stopping, suggesting
-the GPU run will converge to a similar or slightly better optimum.
+Best so far: val_r2 0.3878 (ep7), test_r2 0.4635 — on par with the
+LightGBM baseline (0.4642) at epoch 7, still climbing; below TabPFN
+(0.4962). The CPU reference run reached test_r2 0.5051 at epoch 7
+before it was killed, so the final GPU result is expected to land in
+the 0.49–0.51 range for seed 42.
 
 *(Final 3-seed results to be added upon completion.)*
 
