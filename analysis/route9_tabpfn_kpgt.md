@@ -65,43 +65,72 @@ runs both implementations (DGL CPU vs pure-PyTorch) on the same batch in
 eval mode; max absolute output difference = **8.3 × 10⁻⁷** (float32
 rounding), confirming the port is numerically faithful.
 
-**Status**: training in progress (3 seeds × up to 40 epochs, early stop).
-Partial results (seed=42, 7 epochs, 2026-08-29 07:05 Taipei time):
+**Status**: complete (3 seeds, early stopping; full per-epoch log in
+`analysis/route9_kpgt_results.json`).
 
-| Epoch | val_r2 | test_r2 | test_nf |
-|---:|---:|---:|---:|
-| 1 | 0.0051 | 0.0377 | 0.1169 |
-| 2 | 0.2595 | 0.2554 | 0.3306 |
-| 3 | 0.3060 | 0.3872 | 0.4555 |
-| 4 | 0.3398 | 0.4247 | 0.4804 |
-| 5 | 0.3245 | 0.3966 | 0.2568 |
-| 6 | 0.3242 | 0.3781 | 0.3889 |
-| 7 | **0.3878** | **0.4635** | **0.5044** |
+**Final results** (best-validation checkpoint evaluated on test):
 
-Best so far: val_r2 0.3878 (ep7), test_r2 0.4635 — on par with the
-LightGBM baseline (0.4642) at epoch 7, still climbing; below TabPFN
-(0.4962). The CPU reference run reached test_r2 0.5051 at epoch 7
-before it was killed, so the final GPU result is expected to land in
-the 0.49–0.51 range for seed 42.
+| Seed | Best epoch | val R² | test R² (all) | test R² (non-floor) | Spearman |
+|---:|---:|---:|---:|---:|---:|
+| 42 | 16 | 0.4059 | 0.5191 | 0.5633 | 0.8257 |
+| 123 | 9 | 0.4105 | 0.5073 | 0.5404 | 0.8023 |
+| 7 | 13 | 0.4080 | 0.5139 | 0.5035 | 0.8040 |
+| **mean** | | | **0.5134 ± 0.0048** | **0.5357 ± 0.0246** | 0.8107 |
+| LightGBM baseline (v4.2) | — | — | 0.4642 | 0.6317 | — |
+| TabPFN v2 (9.1) | — | — | 0.4962 ± 0.0016 | 0.6268 ± 0.0051 | — |
 
-*(Final 3-seed results to be added upon completion.)*
+KPGT is the **best route of the nine on the floor-included test set**
+(0.5134, +0.049 vs the LightGBM baseline), and it also beats TabPFN
+(0.4962) by +0.017. But the gain is entirely a floor-region effect: on
+the non-floor subset KPGT is *worse* than the baseline (0.5357 vs
+0.6317, −0.096) — the graph transformer, fine-tuned end-to-end on
+raw logPapp labels, learns the censored-floor pattern better than the
+2D-descriptor models but pays for it with a substantial loss of
+predictive power on the molecules the assay actually measured.
 
-## 9.3 Conclusion (preliminary)
+**Reproducibility note**: the DGL 2.2.1 Windows wheel is CPU-only, so
+the official DGL fine-tune loop could not use the GPU. The backbone was
+ported to pure PyTorch (graph ops → sparse tensor scatter operations);
+the port was validated against the official DGL implementation on the
+same batches in eval mode (max absolute output difference 8.3 × 10⁻⁷,
+float32 rounding). Per-epoch checkpoints (`kpgt_gpu_ckpt_<seed>.pt`)
+allow resume after interruption.
 
-TabPFN v2 is a **genuine positive result** for PAMPA: +0.032 R² over the
-v4.2 LightGBM baseline with 217 RDKit descriptors only, no fingerprints,
-no pretrained embeddings. This is the first route (of 9) to exceed the
-baseline by more than retraining noise on the full (floor-included) test
-set.
+## 9.3 Conclusion
 
-KPGT fine-tune is in progress; partial results are below TabPFN at 5
-epochs but the trajectory is still rising.
+**Both foundation models beat the v4.2 LightGBM baseline on the
+floor-included test set** — the first positive results of the nine PAMPA
+improvement routes:
+
+| Route | R² (all) | Δ vs baseline | R² (non-floor) | Δ vs baseline |
+|---|---:|---:|---:|---:|
+| LightGBM baseline (v4.2) | 0.4642 | — | 0.6317 | — |
+| TabPFN v2 (217 desc) | 0.4962 ± 0.0016 | **+0.032** | 0.6268 ± 0.0051 | −0.005 |
+| **KPGT fine-tuned (best route)** | **0.5134 ± 0.0048** | **+0.049** | 0.5357 ± 0.0246 | **−0.096** |
+
+The two models win in complementary ways. TabPFN (frozen, no gradient
+update on our data — in-context attention at inference) gains almost
+exclusively in the censored-floor region while leaving the non-floor
+R² essentially unchanged. KPGT (fine-tuned end-to-end on raw logPapp
+labels) gains more on the full set but *loses* 0.096 on the non-floor
+subset: gradient fine-tuning on a label set that is 3.7% left-censored
+teaches the model the floor pattern at a real cost to its ability to
+predict the molecules the assay actually measured.
+
+**Neither result violates the ceiling analysis.** The oracle ceiling
+(uncensored perfect, censored → global mean) is 0.5387; KPGT's 0.5134
+is now within 0.025 of it, and its non-floor deficit is consistent with
+the floor rows pulling the full-set R² up while dragging the subset
+R² down. The ceiling still holds: 0.70 remains unreachable without
+uncensored re-measurements of the 269 floored compounds, and the
+best route tested (KPGT 0.5134) sits below the 0.5387 oracle.
 
 **Implication for the manuscript**: the frozen-embedding negative result
-(v4.2, §3.4) and the five negative improvement routes (§4.4 item 4)
-motivate a **foundation-model positive result** — TabPFN v2's in-context
-learning is a gradient-free mechanism that outperforms gradient-trained
-LightGBM on this small, noisy, left-censored regression task. This
-supports the §4.5 future-direction recommendation of task-tuned models,
-while showing that even a *frozen* foundation model (TabPFN, no gradient
-update on the PAMPA data) already provides a measurable gain.
+(v4.2, §3.4) is not a general statement that pretrained knowledge cannot
+help. A foundation model that conditions on the training set at
+inference time (TabPFN, zero gradient updates) adds +0.032, and a
+pretrained graph transformer fine-tuned with gradient updates (KPGT)
+adds +0.049 — the largest gain of all nine routes. This sharpens the
+§4.5 recommendation: task-tuned molecular encoders are the most
+promising lever for the molecular endpoints, but the binding constraint
+remains the censored labels, not the representation.
