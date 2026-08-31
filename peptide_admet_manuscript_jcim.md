@@ -8,7 +8,7 @@
 - PeptiVerse frozen embeddings (ρ = 0.67) are outperformed by end-to-end fine-tuned KPGT (ρ = 0.81) on the same molecules, confirming task-specific tuning is essential
 
 ## Abstract
-**Purpose** Peptide oral absorption remains a key bottleneck in peptide drug development. We systematically evaluated nine computational routes to predict PAMPA permeability on the pepADMET dataset (7,283 cyclic peptides) using a leakage-controlled, censored-floor-aware protocol. **Methods** A unique-SMILES 70/10/20 split (seed 42) was applied to prevent data leakage. The left-censored floor (−10.0 log cm/s, 269 compounds) was explicitly modelled; an oracle ceiling R² = 0.539 was derived from the censored variance. Nine routes were tested: (1) descriptor expansion, (2) model complexity, (3) ensemble, (4) two-stage floor classifier, (5) soft label blending, (6) ChemBERTa embeddings, (7) PeptiVerse raw data cross-validation, (8) label averaging (pepADMET ensemble), (9) foundation models (TabPFN v2, KPGT fine-tune). **Results** Routes 1–8 failed to exceed the baseline R² = 0.464 (best Δ = −0.015). TabPFN v2 (217 RDKit descriptors, canonical split) achieved R² = 0.496 ± 0.002. KPGT fine-tune (base.pth, 3 seeds, early stopping) reached R² = 0.513 ± 0.005 (best seed 0.519). Both foundation models gain exclusively in the censored subset; non-floor R² decreased. Spearman ρ on the same 6,834 shared molecules: PeptiVerse frozen ChemBERTa ρ = 0.671 vs our KPGT fine-tune ρ = 0.811. **Conclusion** Foundation models are the first to break the PAMPA baseline, but the censored ceiling (0.539) remains the hard limit. Future progress requires uncensored re-measurement of floor compounds, not better models.
+**Purpose** Peptide oral absorption remains a key bottleneck in peptide drug development. We systematically evaluated nine computational routes to predict PAMPA permeability on the pepADMET dataset (7,283 cyclic peptides) using a leakage-controlled, censored-floor-aware protocol. **Methods** A unique-SMILES 70/10/20 split (seed 42) was applied to prevent data leakage. The left-censored floor (−10.0 log cm/s, 269 compounds) was explicitly modelled; an oracle ceiling R² = 0.539 was derived from the censored variance. Nine routes were tested: (1) descriptor expansion (5-seed mean), (2) rank-Gaussian target transform (honest train-fit quantile, 5-seed ensemble), (3) LightGBM ensemble (5-seed), (4) Tobit censored regression, (5) soft label blending (β val-selected), (6) ChemBERTa frozen embeddings (3 seeds, 4 configs), (7) PeptiVerse raw data cross-validation, (8) label averaging (pepADMET ensemble), (9) foundation models (TabPFN v2, KPGT fine-tune). **Results** Routes 1–8 failed to exceed the baseline R² = 0.464 (best Δ = +0.001, route 5). TabPFN v2 (217 RDKit descriptors, canonical split) achieved R² = 0.496 ± 0.002. KPGT fine-tune (base.pth, 3 seeds, early stopping) reached R² = 0.513 ± 0.005 (best seed 0.519). Both foundation models gain exclusively in the censored subset; non-floor R² decreased. Spearman ρ on the same 6,834 shared molecules: PeptiVerse frozen ChemBERTa ρ = 0.671 vs our KPGT fine-tune ρ = 0.811. **Conclusion** Foundation models are the first to break the PAMPA baseline, but the censored ceiling (0.539) remains the hard limit. Future progress requires uncensored re-measurement of floor compounds, not better models.
 
 **Keywords** peptide ADMET; PAMPA permeability; censored regression; foundation models; TabPFN; KPGT; data leakage
 
@@ -31,12 +31,12 @@ LightGBM 4.7.0 (n_estimators=5000, early_stopping_rounds=150, learning_rate=0.01
 
 ### 2.3 Nine improvement routes
 Routes 1–8 follow the v4.2 pipeline [7] with identical split and evaluation:
-1. Descriptor expansion (Mordred 3D, MQN, WHIM)
-2. Model complexity (XGBoost, CatBoost, MLP, TabNet)
-3. Ensemble (stacking LightGBM+XGBoost+CatBoost, 5-fold CV)
-4. Two-stage floor classifier (LightGBM floor vs non-floor → regression on non-floor)
-5. Soft label blending (floor probability × floor_mean + (1−p) × regression_pred)
-6. ChemBERTa-77M frozen embeddings (384-d) + LightGBM
+1. Descriptor expansion (Mordred 3D, MQN, WHIM; 5-seed mean)
+2. Rank-Gaussian target transform (honest train-fit quantile, 5-seed ensemble)
+3. LightGBM ensemble (+Morgan r1,r3,r4, 5-seed ensemble)
+4. Tobit censored regression (NLL loss, early stopping)
+5. Soft label blending (floor probability × floor_mean + (1−p) × regression_pred, β val-selected)
+6. ChemBERTa-77M frozen embeddings (384-d) + LightGBM (3 seeds, 4 configs)
 7. PeptiVerse raw data cross-validation (HF ChatterjeeLab/PeptiVerse_data, PAMPA 6,869 + Caco-2 606; unique-SMILES 70/10/20 re-split)
 8. Label averaging (pepADMET ensemble mean as pseudo-label)
 
@@ -56,19 +56,19 @@ Python 3.12, PyTorch 2.13 CUDA 12.6, DGL 2.2.1 (CPU, patched), TabPFN 8.5.0, Lig
 ## 3 Results
 
 ### 3.1 Routes 1–8: no breakthrough
-Table 1 summarises routes 1–8. None exceeded the baseline R² = 0.464 (best Δ = −0.015, route 8). The two-stage floor classifier (route 4) collapsed (floor precision 0.12 → R² = −1.21). ChemBERTa embeddings (route 6) added no significant gain (0.458–0.462). PeptiVerse raw data (route 7) reproduced the floor (3.5 %, ceiling 0.501/0.546) and yielded best R² = 0.434/0.430 — confirming the ceiling argument generalises across datasets.
+Table 1 summarises routes 1–8. None exceeded the baseline R² = 0.464 (best Δ = +0.001, route 5). Route 1 (descriptor expansion) achieved 0.4456 ± 0.0025 (5-seed mean). Route 2 (honest rank-Gaussian target, 5-seed ensemble) reached 0.4469. Route 3 (LightGBM ensemble, 5-seed) reached 0.4176. Route 4 (Tobit censored regression) reached 0.4190. Route 5 (soft label blending, β=0.50 val-selected) gave 0.4651 (+0.001). Route 6 (ChemBERTa frozen, best config C_mol_molf_chem) reached 0.4624 ± 0.0068. Route 7 (PeptiVerse raw data) reproduced the floor (3.5 %, ceiling 0.501/0.546) and yielded best R² = 0.434/0.430. Route 8 (label averaging) gave 0.4490.
 
 | Route | Description | R² (all) | Δ vs baseline | Non-floor R² |
 |---|---|---:|---:|---:|
 | Baseline | LightGBM (217 desc + Morgan 2048) | 0.4642 | — | 0.6317 |
-| 1 | Descriptor expansion (Mordred 3D, MQN, WHIM) | 0.449 | −0.015 | 0.618 |
-| 2 | Model complexity (XGB, CatBoost, MLP, TabNet) | 0.452 | −0.012 | 0.621 |
-| 3 | Ensemble (stacking 3×GBM) | 0.456 | −0.008 | 0.624 |
-| 4 | Two-stage floor classifier | −1.21 | −1.67 | N/A |
-| 5 | Soft label blending | 0.465 | +0.001 | 0.632 |
-| 6 | ChemBERTa-77M frozen + LightGBM | 0.462 | −0.002 | 0.630 |
+| 1 | Descriptor expansion (Mordred 3D, MQN, WHIM) | 0.4456 ± 0.0025 | −0.019 | 0.618 |
+| 2 | Rank-Gaussian target (honest, 5-seed ensemble) | 0.4469 | −0.017 | 0.615 |
+| 3 | LightGBM ensemble (+Morgan r1,r3,r4, 5-seed) | 0.4176 | −0.047 | 0.592 |
+| 4 | Tobit censored regression | 0.4190 | −0.045 | 0.466 |
+| 5 | Soft label blending (β=0.50, val-selected) | 0.4651 | +0.001 | 0.593 |
+| 6 | ChemBERTa-77M frozen + LightGBM (best: C_mol_molf_chem) | 0.4624 ± 0.0068 | −0.002 | 0.633 |
 | 7 | PeptiVerse raw (PAMPA / Caco-2) | 0.434 / 0.430 | −0.030 / −0.034 | 0.501 / 0.546 |
-| 8 | Label averaging (pepADMET ensemble mean) | 0.449 | −0.015 | 0.628 |
+| 8 | Label averaging (pepADMET ensemble mean) | 0.4490 | −0.015 | 0.628 |
 
 **Table 1.** Routes 1–8 on v4.2 split. All values on floor-included test set.
 
@@ -139,7 +139,7 @@ Our platform (openclaw-peptide-admet) provides:
 **Not recommended**: Extrapolation to linear peptides, non-peptide macrocycles, or uncensored high-permeability regimes without external validation.
 
 ## 5 Conclusions
-We conducted the first systematic, leakage-controlled, censored-floor-aware benchmark of nine PAMPA improvement routes on 7,283 cyclic peptides. Classical routes (descriptors, models, ensembles, floor handling, embeddings) failed to exceed the LightGBM baseline (R² = 0.464). Foundation models broke this barrier: TabPFN v2 (in-context) reached 0.496 ± 0.002; KPGT fine-tune (end-to-end) reached 0.513 ± 0.005 — the best of all routes, at 95 % of the theoretical censored ceiling (0.539). On shared molecules, KPGT fine-tune (ρ = 0.811) outperformed PeptiVerse frozen embeddings (ρ = 0.671) by +0.14 Spearman, demonstrating the necessity of task-specific fine-tuning. However, both foundation models concentrate gains in the censored region; non-floor regression accuracy declines. **The censored ceiling is the true bottleneck — not model capacity.** Future progress in peptide permeability prediction requires uncensored re-measurement of floor compounds, not better algorithms.
+We conducted the first systematic, leakage-controlled, censored-floor-aware benchmark of nine PAMPA improvement routes on 7,283 cyclic peptides. Classical routes (descriptor expansion, rank-Gaussian target, LightGBM ensemble, Tobit censored regression, soft label blending, ChemBERTa frozen embeddings, PeptiVerse raw data, label averaging) failed to exceed the LightGBM baseline (R² = 0.464). Foundation models broke this barrier: TabPFN v2 (in-context) reached 0.496 ± 0.002; KPGT fine-tune (end-to-end) reached 0.513 ± 0.005 — the best of all routes, at 95 % of the theoretical censored ceiling (0.539). On shared molecules, KPGT fine-tune (ρ = 0.811) outperformed PeptiVerse frozen embeddings (ρ = 0.671) by +0.14 Spearman, demonstrating the necessity of task-specific fine-tuning. However, both foundation models concentrate gains in the censored region; non-floor regression accuracy declines. **The censored ceiling is the true bottleneck — not model capacity.** Future progress in peptide permeability prediction requires uncensored re-measurement of floor compounds, not better algorithms.
 
 ## References
 [1] Hornsby M, Lee J, Steele J, Tuekpe R, Lim A. Therapeutic peptides and proteins: Status and developments in drug delivery. J Control Release. 2026;394:114895. doi:10.1016/j.jconrel.2026.114895
