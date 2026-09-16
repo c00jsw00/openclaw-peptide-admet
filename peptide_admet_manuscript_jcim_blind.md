@@ -54,7 +54,7 @@ Shared molecules between pepADMET PAMPA and PeptiVerse PAMPA were identified by 
 We report the coefficient of determination (R²), root mean squared error (RMSE), mean absolute error (MAE), Spearman's rank correlation (ρ), and the floor-excluded R² (non-floor R²). All metrics are computed with scikit-learn ≥1.5. Models are selected on validation R² by early stopping; final test evaluation uses the best-validation checkpoint.
 
 ### 2.6 Software and hardware
-Python 3.11.16; PyTorch 2.13.0 (CUDA 12.6); DGL 2.2.1 (CPU, patched); TabPFN 8.5.0; LightGBM 4.7.0; RDKit 2026.03.5. The KPGT fine-tunes (PAMPA and Caco-2) and all TabPFN evaluations were executed on an NVIDIA RTX 4070 SUPER (KPGT ~400 s/epoch vs ~815 s/epoch on CPU); LightGBM and the MLP baselines ran on an AMD Ryzen 9 7950X CPU. All code, data, and trained checkpoints are available at https://github.com/c00jsw00/openclaw-peptide-admet.
+Python 3.11.16; PyTorch 2.13.0 (CUDA 12.6); DGL 2.2.1 (CPU, patched); TabPFN 8.5.0; LightGBM 4.7.0; RDKit 2026.03.5. The KPGT fine-tunes (PAMPA and Caco-2) and all TabPFN evaluations were executed on an NVIDIA RTX 4070 SUPER (KPGT ~400 s/epoch vs ~815 s/epoch on CPU); LightGBM and the MLP baselines ran on an AMD Ryzen 9 7950X CPU. All code, data, and trained checkpoints are available at [repository URL redacted for blind review].
 
 ## 3 Results
 
@@ -184,7 +184,7 @@ We present the first systematic, leakage-controlled, censored-floor-aware benchm
 
 [5] Li H, Zhao D, Zeng J. KPGT: Knowledge-Guided Pre-training of Graph Transformer for Molecular Property Prediction. arXiv preprint arXiv:2206.03364. 2022. doi:10.48550/arXiv.2206.03364
 
-[6] c00jsw00. openclaw-peptide-admet: Peptide ADMET Prediction Platform with Censored-Floor-Aware Protocol. https://github.com/c00jsw00/openclaw-peptide-admet (accessed 2026-09-01). (v4.2 protocol: unique-SMILES 70/10/20 split, censored floor at −10.0 log cm/s, MixedADMETMLP baseline, Huber loss)
+[6] [AUTHORS]. [MS Title]: Peptide ADMET Prediction Platform with Censored-Floor-Aware Protocol (v4.2). Reproduced via the protocol described in Section 2; see Data Availability statement. (v4.2 protocol: unique-SMILES 70/10/20 split, censored floor at −10.0 log cm/s, MixedADMETMLP baseline, Huber loss)
 
 [7] Rogers D, Hahn M. Extended-Connectivity Fingerprints. J Chem Inf Model. 2010;50(5):742-754. doi:10.1021/ci100050t
 
@@ -214,7 +214,7 @@ We present the first systematic, leakage-controlled, censored-floor-aware benchm
 
 **Graphical Abstract** (to be rendered): Flowchart showing the v4.2 censored-floor protocol → ten routes (PAMPA 1–9, Caco-2 10) → baselines 0.464/0.393 → TabPFN 0.496/0.442 → KPGT 0.513/0.411 → ceilings 0.539/0.570. Key message: foundation models are the first to beat the baselines on both endpoints, but the ceilings hold.
 
-**Data Availability** All data, splits, trained checkpoints, and reproduction scripts are available at https://github.com/c00jsw00/openclaw-peptide-admet (MIT License).
+**Data Availability** All data, splits, trained checkpoints, and reproduction scripts are available at [repository URL redacted for blind review] (MIT License).
 
 **AI Declaration** This manuscript was prepared with the assistance of AI tools (Hermes Agent, Nemotron-3-Ultra) for code generation, literature retrieval, and text drafting. All scientific claims, numbers, and conclusions were verified by the authors against primary computational experiments.
 
